@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <div align="center">
 
 <h1>Stable Diffusion v1.5 | Worker</h1>
@@ -30,3 +31,6 @@ This worker follows a modified version of the [worker template](https://github.c
 ## 🔗 | Links
 
 🐳 [Docker Container](https://hub.docker.com/r/runpod/ai-api-stable-diffusion-v1)
+=======
+# serverless_runpod
+>>>>>>> 5204476ce71e8f31439f4d7f1fa8de65b860bc3d
