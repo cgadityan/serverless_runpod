@@ -10,13 +10,14 @@ import argparse
 from pathlib import Path
 from urllib.parse import urlparse
 
-from diffusers import StableDiffusionPipeline
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
-)
+from diffusers import FluxTransformer2DModel, FluxFillPipeline
+# from diffusers import StableDiffusionPipeline
+# from diffusers.pipelines.stable_diffusion.safety_checker import (
+#     StableDiffusionSafetyChecker,
+# )
 
 SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
-MODEL_CACHE_DIR = "diffusers-cache"
+MODEL_CACHE_DIR = "hf-cache"
 
 
 def download_model(model_url: str):
@@ -39,12 +40,12 @@ def download_model(model_url: str):
                 if chunk:
                     f.write(chunk)
 
-    StableDiffusionSafetyChecker.from_pretrained(
-        SAFETY_MODEL_ID,
-        cache_dir=model_cache_path,
-    )
+    # StableDiffusionSafetyChecker.from_pretrained(
+    #     SAFETY_MODEL_ID,
+    #     cache_dir=model_cache_path,
+    # )
 
-    StableDiffusionPipeline.from_pretrained(
+    FluxFillPipeline.from_pretrained(
         model_id,
         cache_dir=model_cache_path,
     )
@@ -56,7 +57,7 @@ def download_model(model_url: str):
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
     "--model_url", type=str,
-    default="https://huggingface.co/stabilityai/stable-diffusion-2-1",
+    default="https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev",
     help="URL of the model to download."
 )
 
