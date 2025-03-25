@@ -173,6 +173,17 @@ class Predictor:
         engine_config.runtime_config.dtype = torch.bfloat16
         local_rank = get_world_group().local_rank
 
+        input_config.num_inference_steps = 50
+        engine_args.ulysses_degree = 2
+        engine_args.ring_degree = 1
+
+        parallel_info = (
+            f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
+            f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
+            f"tp{engine_args.tensor_parallel_degree}_"
+            f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
+        )
+
         parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
 
         try:
@@ -204,7 +215,7 @@ class Predictor:
         parallelize_transformer(pipe)
 
         print("Processing virtual try-on...")
-        _, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
+        output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
             args.garment,
             args.model_img,
             args.mask,
@@ -243,7 +254,7 @@ class Predictor:
         #     **extra_kwargs,
         # )
 
-        output_paths = []
+        # output_paths = []
         # for i, sample in enumerate(output.images):
         #     if output.nsfw_content_detected and output.nsfw_content_detected[i] and self.NSFW:
         #         continue
@@ -417,19 +428,8 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             prompt = "A photo of a person wearing the garment, detailed texture, high quality"
         
         # Run inference
-        generator = torch.Generator(device="cuda").manual_seed(seed)
+        # generator = torch.Generator(device="cuda").manual_seed(seed)
         
-        # result = pipe(
-        #     height=size[1],
-        #     width=size[0] * 2,  # Double width for side-by-side images
-        #     image=combined_image,
-        #     mask_image=mask_image,
-        #     num_inference_steps=50,
-        #     max_sequence_length=512,
-        #     guidance_scale=30,
-        #     prompt=prompt,
-        #     generator=generator
-        # ).images[0]
 
         parallel_info = (
             f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"

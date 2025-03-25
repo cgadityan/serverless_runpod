@@ -86,7 +86,7 @@ def run(job):
 
 # Grab args
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_tag', type=str, default="runwayml/stable-diffusion-v1-5")
+parser.add_argument('--model_tag', type=str, default="black-forest-labs/FLUX.1-Fill-dev")
 
 if __name__ == "__main__":
     args = parser.parse_args()

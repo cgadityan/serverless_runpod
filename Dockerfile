@@ -10,12 +10,12 @@ ENV SHELL=/bin/bash
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu
 
 # Build args
-ARG MODEL_URL
+ARG MODEL_URL=https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev
 ENV MODEL_URL=${MODEL_URL}
 ARG MODEL_NAME
 ENV MODEL_NAME=${MODEL_NAME}
-ARG MODEL_TAG
-ENV MODEL_TAG=${"black-forest-labs/FLUX.1-Fill-dev"}
+ARG MODEL_TAG=black-forest-labs/FLUX.1-Fill-dev
+ENV MODEL_TAG=${MODEL_TAG}
 
 # Update and upgrade the system packages (Worker Template)
 RUN apt-get update -y && \
