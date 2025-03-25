@@ -48,7 +48,7 @@ pip install -U pip
 COPY builder/requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt && \
     rm /requirements.txt
-RUN pip install "xfuser[diffusers,flash-attn]" 
+RUN pip install xfuser diffusers flash-attn 
 
 # Fetch the model
 COPY builder/model_fetcher.py /model_fetcher.py
