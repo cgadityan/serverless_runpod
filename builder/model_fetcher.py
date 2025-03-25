@@ -16,7 +16,7 @@ from diffusers import FluxTransformer2DModel, FluxFillPipeline
 #     StableDiffusionSafetyChecker,
 # )
 
-SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
+# SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
 MODEL_CACHE_DIR = "hf-cache"
 
 

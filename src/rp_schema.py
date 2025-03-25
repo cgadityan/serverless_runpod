@@ -8,6 +8,21 @@ INPUT_SCHEMA = {
         'required': False,
         'default': None
     },
+    'garment': {
+        'type': str,
+        'required': True,
+        'default': 'data/garment.jpg'
+    },
+    'mask': {
+        'type': str,
+        'required': False,
+        'default': 'data/mask.png'
+    },
+    'model_img': {
+        'type': str,
+        'required': True,
+        'default': 'data/model.jpg'
+    },
     'width': {
         'type': int,
         'required': False,
@@ -51,7 +66,7 @@ INPUT_SCHEMA = {
     'guidance_scale': {
         'type': float,
         'required': False,
-        'default': 7.5,
+        'default': 30,
         'constraints': lambda guidance_scale: 0 < guidance_scale < 20
     },
     'scheduler': {
@@ -63,7 +78,7 @@ INPUT_SCHEMA = {
     'seed': {
         'type': int,
         'required': False,
-        'default': None
+        'default': 42
     },
     'nsfw': {
         'type': bool,

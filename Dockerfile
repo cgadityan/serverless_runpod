@@ -15,7 +15,7 @@ ENV MODEL_URL=${MODEL_URL}
 ARG MODEL_NAME
 ENV MODEL_NAME=${MODEL_NAME}
 ARG MODEL_TAG
-ENV MODEL_TAG=${black-forest-labs/FLUX.1-Fill-dev}
+ENV MODEL_TAG=${"black-forest-labs/FLUX.1-Fill-dev"}
 
 # Update and upgrade the system packages (Worker Template)
 RUN apt-get update -y && \
@@ -54,7 +54,9 @@ COPY builder/model_fetcher.py /model_fetcher.py
 RUN python /model_fetcher.py --model_url=${MODEL_URL}
 RUN rm /model_fetcher.py
 
-# Add src files (Worker Template)
+# Add src files and data files (Worker Template)
+
+ADD data .
 ADD src .
 
 ENV RUNPOD_DEBUG_LEVEL=INFO
