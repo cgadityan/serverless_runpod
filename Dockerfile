@@ -16,8 +16,7 @@ ARG MODEL_NAME
 ENV MODEL_NAME=${MODEL_NAME}
 ARG MODEL_TAG=black-forest-labs/FLUX.1-Fill-dev
 ENV MODEL_TAG=${MODEL_TAG}
-ENV CUDA_HOME=/usr/local/cuda
-ENV PATH=$CUDA_HOME/bin:$PATH
+
 
 
 
@@ -25,6 +24,7 @@ ENV PATH=$CUDA_HOME/bin:$PATH
 RUN apt-get update -y && \
     apt-get upgrade -y && \
     apt-get install --yes --no-install-recommends \
+cuda-toolkit-11-8 \
 build-essential \
 vim \
 git \
@@ -33,7 +33,10 @@ software-properties-common \
 google-perftools \
 curl \
 bash 
-RUN apt-get update && apt-get install -y nvidia-cuda-toolkit
+RUN rm -rf /var/lib/apt/lists/*
+
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=$CUDA_HOME/bin:$PATH
 
 
 RUN apt-get autoremove -y && \
