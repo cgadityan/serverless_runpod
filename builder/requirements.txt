@@ -201,7 +201,7 @@ watchdog==6.0.0
 watchfiles==1.0.3
 websockets==12.0
 
-xfusers==0.4.3
+xfuser==0.4.3
 flash-attn==2.7.4.post1
 
 xxhash==3.4.1
