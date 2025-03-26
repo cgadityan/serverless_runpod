@@ -16,6 +16,10 @@ ARG MODEL_NAME
 ENV MODEL_NAME=${MODEL_NAME}
 ARG MODEL_TAG=black-forest-labs/FLUX.1-Fill-dev
 ENV MODEL_TAG=${MODEL_TAG}
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=$CUDA_HOME/bin:$PATH
+
+
 
 # Update and upgrade the system packages (Worker Template)
 RUN apt-get update -y && \
@@ -28,7 +32,9 @@ wget \
 software-properties-common \
 google-perftools \
 curl \
-bash
+bash 
+RUN apt-get update && apt-get install -y nvidia-cuda-toolkit
+
 
 RUN apt-get autoremove -y && \
 apt-get clean -y && \
@@ -42,7 +48,7 @@ which python && \
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
 python get-pip.py && \
 rm get-pip.py && \
-pip install diffusers flash-attention && \
+pip install diffusers flash-attn && \
 pip install --no-cache-dir -U pip setuptools wheel
 
 # Install Python dependencies (Worker Template)
