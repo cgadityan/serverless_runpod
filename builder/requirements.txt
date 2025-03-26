@@ -202,7 +202,7 @@ watchfiles==1.0.3
 websockets==12.0
 
 xfuser==0.4.3
-flash-attn==2.7.4.post1
+# flash-attn==2.7.4.post1
 
 xxhash==3.4.1
 yarl==1.9.4

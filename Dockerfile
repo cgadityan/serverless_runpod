@@ -57,6 +57,7 @@ pip install --no-cache-dir -U pip setuptools wheel
 COPY builder/requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt && \
     rm /requirements.txt
+RUN pip install flash-attn==2.7.4.post1
 
 # Fetch the model
 COPY builder/model_fetcher.py /model_fetcher.py
