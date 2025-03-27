@@ -38,33 +38,33 @@ def download_model(model_url: str):
 
         # Check if the URL is from huggingface.co
         parsed_url = urlparse(model_url)
-        if parsed_url.netloc == "huggingface.co":
-            model_id = f"{parsed_url.path.strip('/')}"
-            logger.info(f"Detected Hugging Face model ID: {model_id}")
+        # if parsed_url.netloc == "huggingface.co":
+        #     model_id = f"{parsed_url.path.strip('/')}"
+        #     logger.info(f"Detected Hugging Face model ID: {model_id}")
             
-            logger.info(f"Downloading model from Hugging Face: {model_id}")
-            FluxFillPipeline.from_pretrained(
-                model_id,
-                cache_dir=model_cache_path,
-            )
-            logger.info(f"Model successfully downloaded to {model_cache_path}")
-        else:
-            logger.info(f"Downloading model from direct URL: {model_url}")
-            downloaded_model = requests.get(model_url, stream=True, timeout=600)
-            downloaded_model.raise_for_status()  # Raise exception for HTTP errors
-            
-            model_file_path = model_cache_path / "model.zip"
-            logger.info(f"Saving model to: {model_file_path}")
-            
-            with open(model_file_path, "wb") as f:
-                total_size = 0
-                for chunk in downloaded_model.iter_content(chunk_size=1024*1024):  # 1MB chunks
-                    if chunk:
-                        f.write(chunk)
-                        total_size += len(chunk)
-                        logger.info(f"Downloaded: {total_size / (1024*1024):.2f} MB")
-            
-            logger.info(f"Model successfully downloaded to {model_file_path}")
+        #     logger.info(f"Downloading model from Hugging Face: {model_id}")
+        #     FluxFillPipeline.from_pretrained(
+        #         model_id,
+        #         cache_dir=model_cache_path,
+        #     )
+        #     logger.info(f"Model successfully downloaded to {model_cache_path}")
+        # else:
+        logger.info(f"Downloading model from direct URL: {model_url}")
+        downloaded_model = requests.get(model_url, stream=True, timeout=600)
+        downloaded_model.raise_for_status()  # Raise exception for HTTP errors
+        
+        model_file_path = model_cache_path / "model.zip"
+        logger.info(f"Saving model to: {model_file_path}")
+        
+        with open(model_file_path, "wb") as f:
+            total_size = 0
+            for chunk in downloaded_model.iter_content(chunk_size=1024*1024):  # 1MB chunks
+                if chunk:
+                    f.write(chunk)
+                    total_size += len(chunk)
+                    logger.info(f"Downloaded: {total_size / (1024*1024):.2f} MB")
+        
+        logger.info(f"Model successfully downloaded to {model_file_path}")
         
         # Verify the download
         if os.path.exists(model_cache_path):
