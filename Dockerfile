@@ -70,7 +70,6 @@ RUN rm /model_fetcher.py
 
 ADD data .
 ADD src .
-ADD hf-cache .
 
 ENV RUNPOD_DEBUG_LEVEL=INFO
 
