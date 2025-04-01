@@ -165,18 +165,8 @@ class Predictor:
             return []
 
         try:
-            # Create a unified parser with a combined description
-            parser = FlexibleArgumentParser(description="xFuser and FLUX Fill Virtual Try-On Arguments")
-            
-            # Add xFuser-related arguments
-            xFuserArgs.add_cli_args(parser)
-
-            # Parse all arguments at once
-            args = parser.parse_args()
-            logger.info("Successfully parsed arguments")
-            
-            # Process xFuser arguments to create configurations
-            engine_args = xFuserArgs.from_cli_args(args)
+            # Create configurations directly without command line arguments
+            engine_args = xFuserArgs()
             engine_config, input_config = engine_args.create_config()
             logger.info("Created engine and input configs")
             
