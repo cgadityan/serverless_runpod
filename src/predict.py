@@ -147,8 +147,15 @@ class Predictor:
     @torch.inference_mode()
     def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed):
         '''
-        Run a single prediction on the model
+        Run a single prediction on the model in distributed mode
         '''
+        # Initialize distributed environment
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend='nccl')
+            local_rank = torch.distributed.get_rank()
+            torch.cuda.set_device(local_rank)
+            logger.info(f"Initialized distributed process group. Local rank: {local_rank}")
+
         logger.info("Starting prediction with parameters:")
         logger.info(f"Width: {width}, Height: {height}")
         logger.info(f"Steps: {num_inference_steps}, Guidance Scale: {guidance_scale}")
@@ -224,6 +231,9 @@ class Predictor:
 
             logger.info("Processing virtual try-on...")
             try:
+                # Synchronize processes before processing
+                torch.distributed.barrier()
+                
                 output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
                     garment,
                     model_img,
@@ -237,6 +247,7 @@ class Predictor:
                 logger.error(f"Error during virtual try-on processing: {e}")
                 return []
             
+            # Only log metrics from the last process
             if get_world_group().rank == get_world_group().world_size - 1:
                 logger.info(
                     f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
@@ -245,6 +256,11 @@ class Predictor:
             try:
                 get_runtime_state().destory_distributed_env()
                 logger.info("Cleaned up distributed environment")
+                
+                # Clean up distributed environment
+                if torch.distributed.is_initialized():
+                    torch.distributed.destroy_process_group()
+                    logger.info("Destroyed distributed process group")
             except Exception as e:
                 logger.error(f"Error cleaning up distributed environment: {e}")
 
