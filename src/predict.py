@@ -166,7 +166,7 @@ class Predictor:
 
         try:
             # Create configurations directly without command line arguments
-            engine_args = xFuserArgs()
+            engine_args = xFuserArgs(model = "black-forest-labs/FLUX.1-Fill-dev")
             engine_config, input_config = engine_args.create_config()
             logger.info("Created engine and input configs")
             
