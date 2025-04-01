@@ -131,7 +131,7 @@ class Predictor:
         # self.inpaint_pipe.enable_xformers_memory_efficient_attention()
 
     @torch.inference_mode()
-    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed, lora, lora_scale):
+    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed):
         '''
         Run a single prediction on the model
         '''

@@ -41,11 +41,9 @@ def run(job):
     validated_input = validated_input['validated_input']
 
     # Download input objects
-    validated_input['init_image'], validated_input['mask'], validated_input['garment'], validated_input['model_img'] =\
-    rp_download.download_files_from_urls(
+    validated_input['mask'], validated_input['garment'], validated_input['model_img'] = rp_download.download_files_from_urls(
         job['id'],
-        [validated_input.get('init_image', None), 
-         validated_input.get('mask', None), 
+        [validated_input.get('mask', None), 
          validated_input.get('garment', None), 
          validated_input.get('model_img', None)]
     )  # pylint: disable=unbalanced-tuple-unpacking
@@ -57,18 +55,19 @@ def run(job):
 
     img_paths = MODEL.predict(
         prompt=validated_input["prompt"],
-        negative_prompt=validated_input.get("negative_prompt", None),
-        width=validated_input.get('width', 512),
-        height=validated_input.get('height', 512),
-        init_image=validated_input['init_image'],
+        garment = validated_input["garment"],
         mask=validated_input['mask'],
+        model_img=validated_input["model_img"],
+        output=validated_input["output"],
+        width=validated_input.get('width', 1224),
+        height=validated_input.get('height', 1632),    
         prompt_strength=validated_input['prompt_strength'],
         num_outputs=validated_input.get('num_outputs', 1),
         num_inference_steps=validated_input.get('num_inference_steps', 50),
         guidance_scale=validated_input['guidance_scale'],
         scheduler=validated_input.get('scheduler', "K-LMS"),
-        lora=validated_input.get("lora", None),
-        lora_scale=validated_input.get("lora_scale", 1),
+        # lora=validated_input.get("lora", None),
+        # lora_scale=validated_input.get("lora_scale", 1),
         seed=validated_input['seed']
     )
 

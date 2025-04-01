@@ -35,11 +35,6 @@ INPUT_SCHEMA = {
         'default': 1632,
         # 'constraints': lambda height: height in [128, 256, 384, 448, 512, 576, 640, 704, 768]
     },
-    'init_image': {
-        'type': str,
-        'required': False,
-        'default': None
-    },
     'prompt_strength': {
         'type': float,
         'required': False,
@@ -75,20 +70,20 @@ INPUT_SCHEMA = {
         'required': False,
         'default': 22
     },
-    'nsfw': {
-        'type': bool,
-        'required': False,
-        'default': False
-    },
-    'lora': {
-        'type': str,
-        'required': False,
-        'default': None
-    },
-    'lora_scale': {
-        'type': float,
-        'required': False,
-        'default': 1,
-        'constraints': lambda lora_scale: 0 <= lora_scale <= 1
-    }
+    # 'nsfw': {
+    #     'type': bool,
+    #     'required': False,
+    #     'default': False
+    # },
+    # 'lora': {
+    #     'type': str,
+    #     'required': False,
+    #     'default': None
+    # },
+    # 'lora_scale': {
+    #     'type': float,
+    #     'required': False,
+    #     'default': 1,
+    #     'constraints': lambda lora_scale: 0 <= lora_scale <= 1
+    # }
 }
