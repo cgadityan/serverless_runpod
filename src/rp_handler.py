@@ -71,6 +71,8 @@ def run(job):
         seed=validated_input['seed']
     )
 
+    print("Image paths:", img_paths)
+
     # Ensure img_paths is a list
     if isinstance(img_paths, str):
         img_paths = [img_paths]

@@ -57,6 +57,16 @@ import time
 import functools
 import numpy as np
 from PIL import Image
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 # from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
 MODEL_CACHE = "hf-cache"
@@ -70,14 +80,15 @@ class Predictor:
         Initialize the Predictor class
         '''
         self.model_tag = model_tag
+        logger.info(f"Initialized Predictor with model tag: {model_tag}")
 
     def setup(self):
         '''
         Load the model into memory to make running multiple predictions efficient
         '''
-        print("Loading pipeline...")
+        logger.info("Loading pipeline...")
 
-        print("Loading FLUX Fill model...")
+        logger.info("Loading FLUX Fill model...")
         # Initialize the pipeline with the correct model
         self.transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/FLUX.1-Fill-dev", 
@@ -85,6 +96,8 @@ class Predictor:
             subfolder="transformer",
             cache_dir= MODEL_CACHE
         )
+        logger.info("Transformer model loaded successfully")
+
         self.pipe = FluxFillPipeline.from_pretrained(
             # pretrained_model_name_or_path=engine_config.model_config.model,
             "black-forest-labs/FLUX.1-Fill-dev",
@@ -92,6 +105,7 @@ class Predictor:
             torch_dtype=torch.bfloat16,
             cache_dir=MODEL_CACHE
         ).to("cuda")
+        logger.info("Pipeline loaded and moved to CUDA")
 
         # self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(
         #     self.model_tag,
@@ -135,115 +149,120 @@ class Predictor:
         '''
         Run a single prediction on the model
         '''
+        logger.info("Starting prediction with parameters:")
+        logger.info(f"Width: {width}, Height: {height}")
+        logger.info(f"Steps: {num_inference_steps}, Guidance Scale: {guidance_scale}")
+        logger.info(f"Scheduler: {scheduler}, Seed: {seed}")
+
         extra_kwargs = {}
         size = (width, height)
- 
         pipe = self.pipe
-        pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
+        try:
+            pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
+            logger.info(f"Successfully set scheduler to {scheduler}")
+        except Exception as e:
+            logger.error(f"Error setting scheduler: {e}")
+            return []
 
-        # Create a unified parser with a combined description
-        parser = FlexibleArgumentParser(description="xFuser and FLUX Fill Virtual Try-On Arguments")
-        
-        # Add xFuser-related arguments
-        xFuserArgs.add_cli_args(parser)
+        try:
+            # Create a unified parser with a combined description
+            parser = FlexibleArgumentParser(description="xFuser and FLUX Fill Virtual Try-On Arguments")
+            
+            # Add xFuser-related arguments
+            xFuserArgs.add_cli_args(parser)
 
-        # Parse all arguments at once
-        args = parser.parse_args()
-        
-        # Process xFuser arguments to create configurations
-        engine_args = xFuserArgs.from_cli_args(args)
-        engine_config, input_config = engine_args.create_config()
-        engine_config.runtime_config.dtype = torch.bfloat16
-        local_rank = get_world_group().local_rank
+            # Parse all arguments at once
+            args = parser.parse_args()
+            logger.info("Successfully parsed arguments")
+            
+            # Process xFuser arguments to create configurations
+            engine_args = xFuserArgs.from_cli_args(args)
+            engine_config, input_config = engine_args.create_config()
+            logger.info("Created engine and input configs")
+            
+            engine_config.runtime_config.dtype = torch.bfloat16
+            local_rank = get_world_group().local_rank
+            logger.info(f"Set local rank to {local_rank}")
 
-        input_config.prompt = prompt
-        input_config.guidance_scale = guidance_scale
-        input_config.num_inference_steps = num_inference_steps
-        input_config.seed = seed
-        engine_args.ulysses_degree = 2
-        engine_args.ring_degree = 1
+            input_config.prompt = prompt
+            input_config.guidance_scale = guidance_scale
+            input_config.num_inference_steps = num_inference_steps
+            input_config.seed = seed
+            engine_args.ulysses_degree = 2
+            engine_args.ring_degree = 1
+            logger.info("Set input config parameters")
 
-        parallel_info = (
-            f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
-            f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
-            f"tp{engine_args.tensor_parallel_degree}_"
-            f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
-        )
+            parallel_info = (
+                f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
+                f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
+                f"tp{engine_args.tensor_parallel_degree}_"
+                f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
+            )
 
-        parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
+            logger.info(f"Parallel Info: {parallel_info}")
 
-        # Use default prompt if None was provided (this is redundant with the default parameter but kept for clarity)
-        prompt = prompt if prompt != None else """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
+            parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
+            logger.info(f"Peak memory usage: {parameter_peak_memory/1e9:.2f} GB")
+
+            # Use default prompt if None was provided
+            if prompt is None:
+                logger.info("Using default prompt")
+                prompt = """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
 [IMAGE1] White Adidas t-shirt with black trefoil logo and text.
 [IMAGE2] Model wearing a White Adidas t-shirt with black trefoil logo and text."""
 
-        ### Parallelize 
-        initialize_runtime_state(pipe, engine_config)
-        get_runtime_state().set_input_parameters(
-            height,
-            width,
-            batch_size=1,
-            num_inference_steps=input_config.num_inference_steps,
-            max_condition_sequence_length=512,
-            split_text_embed_in_sp=get_pipeline_parallel_world_size() == 1,
-        )
-        
-        parallelize_transformer(pipe)
+            ### Parallelize 
+            try:
+                initialize_runtime_state(pipe, engine_config)
+                logger.info("Initialized runtime state")
+                
+                get_runtime_state().set_input_parameters(
+                    height,
+                    width,
+                    batch_size=1,
+                    num_inference_steps=input_config.num_inference_steps,
+                    max_condition_sequence_length=512,
+                    split_text_embed_in_sp=get_pipeline_parallel_world_size() == 1,
+                )
+                logger.info("Set input parameters")
+                
+                parallelize_transformer(pipe)
+                logger.info("Parallelized transformer")
+            except Exception as e:
+                logger.error(f"Error during parallelization setup: {e}")
+                return []
 
-        print("Processing virtual try-on...")
-        output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
-            garment,
-            model_img,
-            mask,
-            output,
-            local_rank,
-            size=size,
-        )
-        
-        if get_world_group().rank == get_world_group().world_size - 1:
-            print(
-                f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
-            )
-        get_runtime_state().destory_distributed_env()
+            logger.info("Processing virtual try-on...")
+            try:
+                output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
+                    garment,
+                    model_img,
+                    mask, 
+                    output,
+                    local_rank,
+                    size=size,
+                )
+                logger.info(f"Successfully processed virtual try-on in {elapsed_time:.2f} seconds")
+            except Exception as e:
+                logger.error(f"Error during virtual try-on processing: {e}")
+                return []
+            
+            if get_world_group().rank == get_world_group().world_size - 1:
+                logger.info(
+                    f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
+                )
 
-        # if not (lora is None):
-        #     print("loaded lora")
-        #     pipe.unet.load_attn_procs(lora)
-        #     self.lora_loaded = True
-        #     extra_kwargs['cross_attention_kwargs'] = {"scale": lora_scale}
+            try:
+                get_runtime_state().destory_distributed_env()
+                logger.info("Cleaned up distributed environment")
+            except Exception as e:
+                logger.error(f"Error cleaning up distributed environment: {e}")
 
-        # # because lora is retained between requests
-        # if (lora is None) and self.lora_loaded:
-        #     extra_kwargs['cross_attention_kwargs'] = {"scale": 0}
+            return output_paths
 
-        # generator = torch.Generator("cuda").manual_seed(seed)
-        # output = pipe(
-        #     prompt=[prompt] * num_outputs if prompt is not None else None,
-        #     negative_prompt=[negative_prompt]*num_outputs if negative_prompt is not None else None,
-        #     # width=width,
-        #     # height=height,
-        #     guidance_scale=guidance_scale,
-        #     generator=generator,
-        #     num_inference_steps=num_inference_steps,
-        #     **extra_kwargs,
-        # )
-
-        # output_paths = []
-        # for i, sample in enumerate(output.images):
-        #     if output.nsfw_content_detected and output.nsfw_content_detected[i] and self.NSFW:
-        #         continue
-
-        #     output_path = f"/outputs/out-{i}.png"
-        #     sample.save(output_path)
-        #     output_paths.append(output_path)
-
-        # if len(output_paths) == 0:
-        #     raise Exception(
-        #         "NSFW content detected. Try running it again, or try a different prompt."
-        #     )
-
-        return output_paths
-    
+        except Exception as e:
+            logger.error(f"Fatal error in predict function: {e}")
+            return []
 
     
 ##################################################################################
@@ -252,6 +271,7 @@ def fit_in_box(img, target_width, target_height, fill_color=(255, 255, 255)):
     """Resize image to fit in target box while preserving aspect ratio"""
     orig_w, orig_h = img.size
     if orig_w == 0 or orig_h == 0:
+        logger.warning("Input image has zero width or height")
         return Image.new("RGB", (target_width, target_height), fill_color)
     
     scale = min(target_width / float(orig_w), target_height / float(orig_h))
@@ -270,10 +290,14 @@ def fit_in_box(img, target_width, target_height, fill_color=(255, 255, 255)):
 
 def create_inference_image(garment_path, model_path, mask_path, size=(576, 768)):
     """Creates properly formatted input for FLUX Fill model"""
+    logger.info("Creating inference images")
+    logger.info(f"Target size: {size}")
+
     # Ensure size is a valid tuple with positive dimensions
     if isinstance(size, (int, float)):
         size = (int(size), int(size))
     elif not isinstance(size, tuple) or len(size) != 2:
+        logger.warning("Invalid size parameter, using default (576, 768)")
         size = (576, 768)  # default size
     
     width, height = int(size[0]), int(size[1])
@@ -291,11 +315,13 @@ def create_inference_image(garment_path, model_path, mask_path, size=(576, 768))
     
     try:
         # Load and verify images
+        logger.info("Loading input images")
         garment_img = Image.open(garment_path).convert("RGB")
         model_img = Image.open(model_path).convert("RGB")
         mask_img = Image.open(mask_path).convert("L")
         
         # Apply transforms
+        logger.info("Applying transforms")
         garment_tensor = transform(garment_img)
         model_tensor = transform(model_img)
         mask_tensor = mask_transform(mask_img)
@@ -314,14 +340,17 @@ def create_inference_image(garment_path, model_path, mask_path, size=(576, 768))
         inpaint_image_pil = transforms.ToPILImage()(inpaint_image * 0.5 + 0.5)
         mask_image_pil = transforms.ToPILImage()(extended_mask)
         
+        logger.info("Successfully created inference images")
         return inpaint_image_pil, mask_image_pil
         
     except Exception as e:
-        raise Exception(f"Error in create_inference_image: {str(e)}")
+        logger.error(f"Error in create_inference_image: {str(e)}")
+        raise
 
 ##################################################################################
     
 def parallelize_transformer(pipe: FluxFillPipeline):
+    logger.info("Starting transformer parallelization")
     transformer = pipe.transformer
     original_forward = transformer.forward
 
@@ -377,19 +406,23 @@ def parallelize_transformer(pipe: FluxFillPipeline):
 
     new_forward = new_forward.__get__(transformer)
     transformer.forward = new_forward
+    logger.info("Completed transformer parallelization")
 
 ##################################################################################
 
 def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768)):
     """Process virtual try-on using FLUX Fill model"""
+    logger.info("Starting virtual try-on processing")
     try:
         # Ensure size is a valid tuple
         if isinstance(size, (int, float)):
             size = (int(size), int(size))
         elif not isinstance(size, tuple) or len(size) != 2:
+            logger.warning("Invalid size parameter, using default (576, 768)")
             size = (576, 768)  # default size
         
         # Create inference images
+        logger.info("Creating inference images")
         combined_image, mask_image = create_inference_image(
             garment_path, 
             model_path, 
@@ -397,14 +430,6 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             size=size
         )
         
-        # Use default prompt if none provided
-        # if prompt is None:
-        #     prompt = "A photo of a person wearing the garment, detailed texture, high quality"
-        
-        # Run inference
-        # generator = torch.Generator(device="cuda").manual_seed(seed)
-        
-
         parallel_info = (
             f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
             f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
@@ -412,13 +437,15 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
         )
 
-        print(parallel_info)
+        logger.info(f"Parallel configuration: {parallel_info}")
 
         if engine_config.runtime_config.use_torch_compile:
+            logger.info("Using torch compile")
             torch._inductor.config.reorder_for_compute_comm_overlap = True
             pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune-no-cudagraphs")
     
             # one step to warmup the torch compiler
+            logger.info("Running warmup step for torch compiler")
             output = pipe(
                 height=size[1],
                 width=size[0] * 2,  # Double width for side-by-side images
@@ -435,6 +462,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         torch.cuda.reset_peak_memory_stats()
         start_time = time.time()
         
+        logger.info("Running inference")
         output = pipe(
             height=size[1],
             width=size[0] * 2,  # Double width for side-by-side images
@@ -453,8 +481,8 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         end_time = time.time()
         elapsed_time = end_time - start_time
         peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
-
-        
+        logger.info(f"Inference completed in {elapsed_time:.2f} seconds")
+        logger.info(f"Peak memory usage: {peak_memory/1e9:.2f} GB")
         
         # Extract the right half (try-on result)
         width = size[0]
@@ -463,8 +491,10 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         # Save the try-on result
         tryon_result = tryon_result.convert('RGB')  # Convert to RGB to ensure compatibility
         tryon_result.save(output_path, format='PNG')
+        logger.info(f"Saved try-on result to {output_path}")
         
         # Create a comparison panel (optional)
+        logger.info("Creating comparison panel")
         garment_img = Image.open(garment_path).convert("RGB")
         model_img = Image.open(model_path).convert("RGB")
         mask_img = Image.open(mask_path).convert("L")
@@ -499,44 +529,55 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
                 for i, image in enumerate(output.images):
                     image_rank = dp_group_index * dp_batch_size + i
                     image_name = f"flux_result_{parallel_info}_{image_rank}_tc_{engine_args.use_torch_compile}.png"
-                    print(image_name)
+                    logger.info(f"Saving additional output image: {image_name}")
         
         # Save panel
         panel_path = os.path.splitext(output_path)[0] + "_panel.png"
         panel.save(panel_path, format='PNG')
         
-        print(f"Try-on result saved to: {output_path}")
-        print(f"Comparison panel saved to: {panel_path}")
+        logger.info(f"Try-on result saved to: {output_path}")
+        logger.info(f"Comparison panel saved to: {panel_path}")
         
         return output_path, peak_memory, elapsed_time
         
     except Exception as e:
-        raise Exception(f"Error in virtual try-on processing: {str(e)}")
+        logger.error(f"Error in virtual try-on processing: {str(e)}")
+        raise
 
 
 def make_scheduler(name, config):
     '''
     Returns a scheduler from a name and config.
     '''
-    return {
-        "DDIM": DDIMScheduler.from_config(config),
-        "DDPM": DDPMScheduler.from_config(config),
-        # "DEIS": DEISMultistepScheduler.from_config(config),
-        "DPM-M": DPMSolverMultistepScheduler.from_config(config),
-        "DPM-S": DPMSolverSinglestepScheduler.from_config(config),
-        "EULER-A": EulerAncestralDiscreteScheduler.from_config(config),
-        "EULER-D": EulerDiscreteScheduler.from_config(config),
-        "HEUN": HeunDiscreteScheduler.from_config(config),
-        "IPNDM": IPNDMScheduler.from_config(config),
-        "KDPM2-A": KDPM2AncestralDiscreteScheduler.from_config(config),
-        "KDPM2-D": KDPM2DiscreteScheduler.from_config(config),
-        # "KARRAS-VE": KarrasVeScheduler.from_config(config),
-        "PNDM": PNDMScheduler.from_config(config),
-        # "RE-PAINT": RePaintScheduler.from_config(config),
-        # "SCORE-VE": ScoreSdeVeScheduler.from_config(config),
-        # "SCORE-VP": ScoreSdeVpScheduler.from_config(config),
-        # "UN-CLIPS": UnCLIPScheduler.from_config(config),
-        # "VQD": VQDiffusionScheduler.from_config(config),
-        "K-LMS": LMSDiscreteScheduler.from_config(config),
-        "KLMS": LMSDiscreteScheduler.from_config(config)
-    }[name]
+    logger.info(f"Creating scheduler: {name}")
+    try:
+        scheduler = {
+            "DDIM": DDIMScheduler.from_config(config),
+            "DDPM": DDPMScheduler.from_config(config),
+            # "DEIS": DEISMultistepScheduler.from_config(config),
+            "DPM-M": DPMSolverMultistepScheduler.from_config(config),
+            "DPM-S": DPMSolverSinglestepScheduler.from_config(config),
+            "EULER-A": EulerAncestralDiscreteScheduler.from_config(config),
+            "EULER-D": EulerDiscreteScheduler.from_config(config),
+            "HEUN": HeunDiscreteScheduler.from_config(config),
+            "IPNDM": IPNDMScheduler.from_config(config),
+            "KDPM2-A": KDPM2AncestralDiscreteScheduler.from_config(config),
+            "KDPM2-D": KDPM2DiscreteScheduler.from_config(config),
+            # "KARRAS-VE": KarrasVeScheduler.from_config(config),
+            "PNDM": PNDMScheduler.from_config(config),
+            # "RE-PAINT": RePaintScheduler.from_config(config),
+            # "SCORE-VE": ScoreSdeVeScheduler.from_config(config),
+            # "SCORE-VP": ScoreSdeVpScheduler.from_config(config),
+            # "UN-CLIPS": UnCLIPScheduler.from_config(config),
+            # "VQD": VQDiffusionScheduler.from_config(config),
+            "K-LMS": LMSDiscreteScheduler.from_config(config),
+            "KLMS": LMSDiscreteScheduler.from_config(config)
+        }[name]
+        logger.info(f"Successfully created {name} scheduler")
+        return scheduler
+    except KeyError:
+        logger.error(f"Unknown scheduler name: {name}")
+        raise
+    except Exception as e:
+        logger.error(f"Error creating scheduler: {e}")
+        raise
