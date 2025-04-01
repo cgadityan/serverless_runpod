@@ -17,9 +17,6 @@ ENV MODEL_NAME=${MODEL_NAME}
 ARG MODEL_TAG=black-forest-labs/FLUX.1-Fill-dev
 ENV MODEL_TAG=${MODEL_TAG}
 
-
-
-
 # Update and upgrade the system packages (Worker Template)
 RUN apt-get update -y && \
     apt-get upgrade -y && \
@@ -37,7 +34,6 @@ RUN rm -rf /var/lib/apt/lists/*
 
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=$CUDA_HOME/bin:$PATH
-
 
 RUN apt-get autoremove -y && \
 apt-get clean -y && \
@@ -67,7 +63,6 @@ RUN python /model_fetcher.py --model_url=${MODEL_URL}
 RUN rm /model_fetcher.py
 
 # Add src files and data files (Worker Template)
-
 ADD data .
 ADD src .
 
