@@ -25,6 +25,7 @@ def upload_or_base64_encode(file_name, img_path):
         return encoded_string.decode("utf-8")
 
 
+
 def run(job):
     '''
     Run inference on the model.
@@ -40,10 +41,13 @@ def run(job):
     validated_input = validated_input['validated_input']
 
     # Download input objects
-    validated_input['init_image'], validated_input['mask'] = rp_download.download_files_from_urls(
+    validated_input['init_image'], validated_input['mask'], validated_input['garment'], validated_input['model_img'] =\
+    rp_download.download_files_from_urls(
         job['id'],
-        [validated_input.get('init_image', None), validated_input.get(
-            'mask', None)]
+        [validated_input.get('init_image', None), 
+         validated_input.get('mask', None), 
+         validated_input.get('garment', None), 
+         validated_input.get('model_img', None)]
     )  # pylint: disable=unbalanced-tuple-unpacking
 
     MODEL.NSFW = validated_input.get('nsfw', True)
@@ -67,6 +71,12 @@ def run(job):
         lora_scale=validated_input.get("lora_scale", 1),
         seed=validated_input['seed']
     )
+
+    # Ensure img_paths is a list
+    if isinstance(img_paths, str):
+        img_paths = [img_paths]
+    elif not isinstance(img_paths, list):
+        img_paths = list(img_paths)
 
     job_output = []
     for index, img_path in enumerate(img_paths):

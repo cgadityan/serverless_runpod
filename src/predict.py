@@ -131,19 +131,12 @@ class Predictor:
         # self.inpaint_pipe.enable_xformers_memory_efficient_attention()
 
     @torch.inference_mode()
-    def predict(self, prompt, negative_prompt, width, height, init_image, mask, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed, lora, lora_scale):
+    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed, lora, lora_scale):
         '''
         Run a single prediction on the model
         '''
-        # if seed is None:
-        #     seed = int.from_bytes(os.urandom(2), "big")
-
-        # if width * height > 786432:
-        #     raise ValueError(
-        #         "Maximum size is 1024x768 or 768x1024 pixels, because of memory limits."
-        #     )
-
         extra_kwargs = {}
+        size = (width, height)
  
         pipe = self.pipe
         pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
@@ -153,18 +146,7 @@ class Predictor:
         
         # Add xFuser-related arguments
         xFuserArgs.add_cli_args(parser)
-        
-        # Add FLUX Fill Virtual Try-On specific arguments
-        parser.add_argument("--model_img", default="/data/model.jpg", help="Path to model image")
-        parser.add_argument("--garment", default="/data/garment.jpg", help="Path to garment image")
-        parser.add_argument("--mask", default="/data/mask.png", help="Path to mask image")
-        parser.add_argument("--output", default="/data/output.jpg", help="Path to save output image")
-        # parser.add_argument("--prompt", default="A photo of a person wearing the garment, detailed texture, high quality",
-        #                     help="Text prompt for generation")
-        parser.add_argument("--size", default="1224,1632", help="Output size as width,height")
-        # parser.add_argument("--seed", type=int, default=42, help="Random seed for generation")
-        parser.add_argument("--cache_dir", default="/hf_cache", help="Cache directory for models")
-        
+
         # Parse all arguments at once
         args = parser.parse_args()
         
@@ -174,7 +156,10 @@ class Predictor:
         engine_config.runtime_config.dtype = torch.bfloat16
         local_rank = get_world_group().local_rank
 
-        input_config.num_inference_steps = 50
+        input_config.prompt = prompt
+        input_config.guidance_scale = guidance_scale
+        input_config.num_inference_steps = num_inference_steps
+        input_config.seed = seed
         engine_args.ulysses_degree = 2
         engine_args.ring_degree = 1
 
@@ -187,26 +172,16 @@ class Predictor:
 
         parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
 
-        try:
-            width, height = map(int, args.size.split(','))
-            size = (width, height)
-        except:
-            print("Invalid size format. Using default 1224x1632.")
-            # size = (720, 960)
-            size = (1224, 1632)
-        
         # Use default prompt if None was provided (this is redundant with the default parameter but kept for clarity)
-        prompt = args.prompt if args.prompt else """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
+        prompt = prompt if prompt != None else """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
 [IMAGE1] White Adidas t-shirt with black trefoil logo and text.
 [IMAGE2] Model wearing a White Adidas t-shirt with black trefoil logo and text."""
-
-        print("size: ", size)
 
         ### Parallelize 
         initialize_runtime_state(pipe, engine_config)
         get_runtime_state().set_input_parameters(
-            height=size[1],
-            width=size[0] * 2,
+            height,
+            width,
             batch_size=1,
             num_inference_steps=input_config.num_inference_steps,
             max_condition_sequence_length=512,
@@ -217,14 +192,12 @@ class Predictor:
 
         print("Processing virtual try-on...")
         output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
-            args.garment,
-            args.model_img,
-            args.mask,
-            args.output,
+            garment,
+            model_img,
+            mask,
+            output,
             local_rank,
-            prompt=prompt,
             size=size,
-            seed=input_config.seed    
         )
         
         if get_world_group().rank == get_world_group().world_size - 1:
@@ -407,7 +380,7 @@ def parallelize_transformer(pipe: FluxFillPipeline):
 
 ##################################################################################
 
-def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, prompt=None, size=(576, 768), seed=42):
+def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768)):
     """Process virtual try-on using FLUX Fill model"""
     try:
         # Ensure size is a valid tuple
@@ -425,8 +398,8 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         )
         
         # Use default prompt if none provided
-        if prompt is None:
-            prompt = "A photo of a person wearing the garment, detailed texture, high quality"
+        # if prompt is None:
+        #     prompt = "A photo of a person wearing the garment, detailed texture, high quality"
         
         # Run inference
         # generator = torch.Generator(device="cuda").manual_seed(seed)
@@ -453,9 +426,9 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
                 mask_image=mask_image,
                 num_inference_steps=1,
                 max_sequence_length=512,
-                guidance_scale=30,
-                prompt=prompt,
-                output_type=input_config.output_type,
+                guidance_scale= input_config.guidance_scale,
+                prompt= input_config.prompt,
+                output_type= input_config.output_type,
                 generator=torch.Generator(device="cuda").manual_seed(input_config.seed),
             ).images
     
@@ -469,8 +442,8 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             mask_image=mask_image,
             num_inference_steps=input_config.num_inference_steps,
             max_sequence_length=512,
-            guidance_scale=30,
-            prompt=prompt,
+            guidance_scale=input_config.guidance_scale,
+            prompt= input_config.prompt,
             output_type=input_config.output_type,
             generator=torch.Generator(device="cuda").manual_seed(input_config.seed)
         )

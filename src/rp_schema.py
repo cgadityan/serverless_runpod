@@ -3,11 +3,6 @@ INPUT_SCHEMA = {
         'type': str,
         'required': True
     },
-    'negative_prompt': {
-        'type': str,
-        'required': False,
-        'default': None
-    },
     'garment': {
         'type': str,
         'required': True,
@@ -15,7 +10,7 @@ INPUT_SCHEMA = {
     },
     'mask': {
         'type': str,
-        'required': False,
+        'required': True,
         'default': 'data/mask.png'
     },
     'model_img': {
@@ -23,24 +18,24 @@ INPUT_SCHEMA = {
         'required': True,
         'default': 'data/model.jpg'
     },
+    'output': {
+        'type': str,
+        'required' : False,
+        'default': 'data/output.jpg'
+    },
     'width': {
         'type': int,
         'required': False,
-        'default': 512,
-        'constraints': lambda width: width in [128, 256, 384, 448, 512, 576, 640, 704, 768]
+        'default': 1224,
+        # 'constraints': lambda width: width in [128, 256, 384, 448, 512, 576, 640, 704, 768]
     },
     'height': {
         'type': int,
         'required': False,
-        'default': 512,
-        'constraints': lambda height: height in [128, 256, 384, 448, 512, 576, 640, 704, 768]
+        'default': 1632,
+        # 'constraints': lambda height: height in [128, 256, 384, 448, 512, 576, 640, 704, 768]
     },
     'init_image': {
-        'type': str,
-        'required': False,
-        'default': None
-    },
-    'mask': {
         'type': str,
         'required': False,
         'default': None
@@ -78,7 +73,7 @@ INPUT_SCHEMA = {
     'seed': {
         'type': int,
         'required': False,
-        'default': 42
+        'default': 22
     },
     'nsfw': {
         'type': bool,

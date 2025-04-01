@@ -337,6 +337,7 @@ if __name__ == "__main__":
     # Parse all arguments at once
     args = parser.parse_args()
     
+    
     # Process xFuser arguments to create configurations
     engine_args = xFuserArgs.from_cli_args(args)
     engine_config, input_config = engine_args.create_config()
