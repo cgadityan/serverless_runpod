@@ -54,6 +54,7 @@ COPY builder/requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt && \
     rm /requirements.txt
 RUN pip install flash-attn==2.7.4.post1
+RUN pip install scipy==1.15.2
 
 RUN huggingface-cli login --token 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
 
