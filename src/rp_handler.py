@@ -91,7 +91,7 @@ def run(job):
             "torchrun",
             "--nproc_per_node=2",
             "predict.py",
-            "--model=black-forest-labs/FLUX.1-Fill-dev ",
+            "--model=black-forest-labs/FLUX.1-Fill-dev",
             "--ulysses_degree=2",
             "--ring_degree=1",
             f"--prompt={validated_input['prompt']}",
