@@ -145,21 +145,29 @@ class Predictor:
         # self.inpaint_pipe.enable_xformers_memory_efficient_attention()
 
     @torch.inference_mode()
-    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed):
+    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed, nproc_per_node=2):
         '''
-        Run a single prediction on the model in distributed mode
+        Run a single prediction on the model in distributed mode using torchrun
         '''
         # Initialize distributed environment
         if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group(backend='nccl')
-            local_rank = torch.distributed.get_rank()
+            # Initialize process group with nccl backend and world size from nproc_per_node
+            os.environ['WORLD_SIZE'] = str(nproc_per_node)
+            os.environ['RANK'] = os.environ.get('LOCAL_RANK', '0')
+            
+            torch.distributed.init_process_group(backend='nccl', 
+                                              init_method='env://',
+                                              world_size=nproc_per_node)
+            
+            local_rank = int(os.environ.get('LOCAL_RANK', 0))
             torch.cuda.set_device(local_rank)
-            logger.info(f"Initialized distributed process group. Local rank: {local_rank}")
+            logger.info(f"Initialized distributed process group. World size: {nproc_per_node}, Local rank: {local_rank}")
 
         logger.info("Starting prediction with parameters:")
         logger.info(f"Width: {width}, Height: {height}")
         logger.info(f"Steps: {num_inference_steps}, Guidance Scale: {guidance_scale}")
         logger.info(f"Scheduler: {scheduler}, Seed: {seed}")
+        logger.info(f"Number of processes per node: {nproc_per_node}")
 
         extra_kwargs = {}
         size = (width, height)
@@ -231,7 +239,7 @@ class Predictor:
 
             logger.info("Processing virtual try-on...")
             try:
-                # Synchronize processes before processing
+                # Synchronize all processes before processing
                 torch.distributed.barrier()
                 
                 output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
@@ -254,11 +262,12 @@ class Predictor:
                 )
 
             try:
+                # Clean up distributed environment
                 get_runtime_state().destory_distributed_env()
                 logger.info("Cleaned up distributed environment")
                 
-                # Clean up distributed environment
                 if torch.distributed.is_initialized():
+                    torch.distributed.barrier()  # Synchronize before destroying
                     torch.distributed.destroy_process_group()
                     logger.info("Destroyed distributed process group")
             except Exception as e:
@@ -550,6 +559,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         logger.error(f"Error in virtual try-on processing: {str(e)}")
         raise
 
+##################################################################################
 
 def make_scheduler(name, config):
     '''
