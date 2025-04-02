@@ -506,10 +506,10 @@ def main():
     parser.add_argument('--output', type=str, required=True, help='Path to save output')
     # parser.add_argument('--width', type=int, default=1224, help='Output width')
     # parser.add_argument('--height', type=int, default=1632, help='Output height')
-    # parser.add_argument('--prompt_strength', type=float, default=0.8, help='Prompt strength')
-    # parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
+    parser.add_argument('--prompt_strength', type=float, default=0.8, help='Prompt strength')
+    parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
     # parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
-    # parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
+    parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
     parser.add_argument('--scheduler', type=str, default='K-LMS', help='Scheduler type')
     # parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
