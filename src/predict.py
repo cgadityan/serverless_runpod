@@ -492,20 +492,26 @@ def main():
     '''
     Run a single prediction on the model using torchrun for distributed execution
     '''
-    parser = argparse.ArgumentParser(description='Run prediction with FLUX Fill model')
-    parser.add_argument('--prompt', type=str, required=True, help='Text prompt for generation')
+    # Create a unified parser with a combined description
+    parser = FlexibleArgumentParser(description="xFuser and FLUX Fill Virtual Try-On Arguments")
+    
+    # Add xFuser-related arguments
+    xFuserArgs.add_cli_args(parser)
+
+    # parser = argparse.ArgumentParser(description='Run prediction with FLUX Fill model')
+    # parser.add_argument('--prompt', type=str, required=True, help='Text prompt for generation')
     parser.add_argument('--garment', type=str, required=True, help='Path to garment image')
     parser.add_argument('--mask', type=str, required=True, help='Path to mask image')
     parser.add_argument('--model_img', type=str, required=True, help='Path to model image')
     parser.add_argument('--output', type=str, required=True, help='Path to save output')
-    parser.add_argument('--width', type=int, default=1224, help='Output width')
-    parser.add_argument('--height', type=int, default=1632, help='Output height')
-    parser.add_argument('--prompt_strength', type=float, default=0.8, help='Prompt strength')
-    parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
-    parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
-    parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
+    # parser.add_argument('--width', type=int, default=1224, help='Output width')
+    # parser.add_argument('--height', type=int, default=1632, help='Output height')
+    # parser.add_argument('--prompt_strength', type=float, default=0.8, help='Prompt strength')
+    # parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
+    # parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
+    # parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
     parser.add_argument('--scheduler', type=str, default='K-LMS', help='Scheduler type')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    # parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
     args = parser.parse_args()
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
@@ -528,18 +534,11 @@ def main():
 
     try:
         # Create configurations directly without command line arguments
-        engine_args = xFuserArgs(model = "black-forest-labs/FLUX.1-Fill-dev")
+        engine_args = xFuserArgs(args)
         engine_config, input_config = engine_args.create_config()
         logger.info("Created engine and input configs")
-        
         engine_config.runtime_config.dtype = torch.bfloat16
-        
-        input_config.prompt = args.prompt
-        input_config.guidance_scale = args.guidance_scale
-        input_config.num_inference_steps = args.num_inference_steps
-        input_config.seed = args.seed
-        engine_args.ulysses_degree = 2
-        engine_args.ring_degree = 1
+        local_rank = get_world_group().local_rank
         logger.info("Set input config parameters")
 
         parallel_info = (
