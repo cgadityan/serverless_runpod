@@ -85,7 +85,6 @@ def run(job):
             validated_input['seed'] = int.from_bytes(os.urandom(2), "big")
             logger.info(f"Generated random seed: {validated_input['seed']}")
 
-        print(MODEL.pipe)
 
         logger.info("Starting model prediction with distributed processing")
         cmd = [
