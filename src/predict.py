@@ -291,7 +291,7 @@ def parallelize_transformer(pipe: FluxFillPipeline):
 
 ##################################################################################
 
-def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768)):
+def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768), guidance_scale=30):
     """Process virtual try-on using FLUX Fill model"""
     logger.info("Starting virtual try-on processing")
     try:
@@ -334,7 +334,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
                 mask_image=mask_image,
                 num_inference_steps=1,
                 max_sequence_length=512,
-                guidance_scale= input_config.guidance_scale,
+                guidance_scale= guidance_scale,
                 prompt= input_config.prompt,
                 output_type= input_config.output_type,
                 generator=torch.Generator(device="cuda").manual_seed(input_config.seed),
@@ -351,7 +351,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             mask_image=mask_image,
             num_inference_steps=input_config.num_inference_steps,
             max_sequence_length=512,
-            guidance_scale=input_config.guidance_scale,
+            guidance_scale=guidance_scale,
             prompt= input_config.prompt,
             output_type=input_config.output_type,
             generator=torch.Generator(device="cuda").manual_seed(input_config.seed)
@@ -595,6 +595,7 @@ def main():
                 args.output,
                 local_rank,
                 size=size,
+                guidance_scale=args.guidance_scale
             )
             logger.info(f"Successfully processed virtual try-on in {elapsed_time:.2f} seconds")
             
