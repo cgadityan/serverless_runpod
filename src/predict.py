@@ -535,6 +535,8 @@ def main():
     try:
         # Create configurations directly without command line arguments
         engine_args = xFuserArgs(args)
+        engine_args.ulysses_degree = 2
+        engine_args.ring_degree = 1
         engine_config, input_config = engine_args.create_config()
         logger.info("Created engine and input configs")
         engine_config.runtime_config.dtype = torch.bfloat16
