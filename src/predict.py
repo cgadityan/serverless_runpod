@@ -31,8 +31,7 @@ from diffusers import (
     # StableDiffusionImg2ImgPipeline,
     # StableDiffusionInpaintPipeline,
     # StableDiffusionInpaintPipelineLegacy,
-
-
+    FlowMatchEulerDiscreteScheduler,
     DDIMScheduler,
     DDPMScheduler,
     # DEISMultistepScheduler,
@@ -434,6 +433,7 @@ def make_scheduler(name, config):
     logger.info(f"Creating scheduler: {name}")
     try:
         scheduler = {
+            "FMEULER-D":FlowMatchEulerDiscreteScheduler.from_config(config),
             "DDIM": DDIMScheduler.from_config(config),
             "DDPM": DDPMScheduler.from_config(config),
             # "DEIS": DEISMultistepScheduler.from_config(config),
