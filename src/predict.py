@@ -107,6 +107,9 @@ class Predictor:
         ).to("cuda")
         logger.info("Pipeline loaded and moved to CUDA")
 
+        pipe = self.pipe
+        return pipe
+
         # self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(
         #     self.model_tag,
         #     safety_checker=None,
@@ -144,142 +147,7 @@ class Predictor:
         # self.img2img_pipe.enable_xformers_memory_efficient_attention()
         # self.inpaint_pipe.enable_xformers_memory_efficient_attention()
 
-    @torch.inference_mode()
-    def predict(self, prompt, garment, mask, model_img, output, width, height, prompt_strength, num_outputs, num_inference_steps, guidance_scale, scheduler, seed, nproc_per_node=2):
-        '''
-        Run a single prediction on the model in distributed mode using torchrun
-        '''
-        # Initialize distributed environment
-        if not torch.distributed.is_initialized():
-            # Initialize process group with nccl backend and world size from nproc_per_node
-            os.environ['WORLD_SIZE'] = str(nproc_per_node)
-            os.environ['RANK'] = os.environ.get('LOCAL_RANK', '0')
-            
-            torch.distributed.init_process_group(backend='nccl', 
-                                              init_method='env://',
-                                              world_size=nproc_per_node)
-            
-            local_rank = int(os.environ.get('LOCAL_RANK', 0))
-            torch.cuda.set_device(local_rank)
-            logger.info(f"Initialized distributed process group. World size: {nproc_per_node}, Local rank: {local_rank}")
-
-        logger.info("Starting prediction with parameters:")
-        logger.info(f"Width: {width}, Height: {height}")
-        logger.info(f"Steps: {num_inference_steps}, Guidance Scale: {guidance_scale}")
-        logger.info(f"Scheduler: {scheduler}, Seed: {seed}")
-        logger.info(f"Number of processes per node: {nproc_per_node}")
-
-        extra_kwargs = {}
-        size = (width, height)
-        pipe = self.pipe
-        try:
-            pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
-            logger.info(f"Successfully set scheduler to {scheduler}")
-        except Exception as e:
-            logger.error(f"Error setting scheduler: {e}")
-            return []
-
-        try:
-            # Create configurations directly without command line arguments
-            engine_args = xFuserArgs(model = "black-forest-labs/FLUX.1-Fill-dev")
-            engine_config, input_config = engine_args.create_config()
-            logger.info("Created engine and input configs")
-            
-            engine_config.runtime_config.dtype = torch.bfloat16
-            local_rank = get_world_group().local_rank
-            logger.info(f"Set local rank to {local_rank}")
-
-            input_config.prompt = prompt
-            input_config.guidance_scale = guidance_scale
-            input_config.num_inference_steps = num_inference_steps
-            input_config.seed = seed
-            engine_args.ulysses_degree = 2
-            engine_args.ring_degree = 1
-            logger.info("Set input config parameters")
-
-            parallel_info = (
-                f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
-                f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
-                f"tp{engine_args.tensor_parallel_degree}_"
-                f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
-            )
-
-            logger.info(f"Parallel Info: {parallel_info}")
-
-            parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
-            logger.info(f"Peak memory usage: {parameter_peak_memory/1e9:.2f} GB")
-
-            # Use default prompt if None was provided
-            if prompt is None:
-                logger.info("Using default prompt")
-                prompt = """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
-[IMAGE1] White Adidas t-shirt with black trefoil logo and text.
-[IMAGE2] Model wearing a White Adidas t-shirt with black trefoil logo and text."""
-
-            ### Parallelize 
-            try:
-                initialize_runtime_state(pipe, engine_config)
-                logger.info("Initialized runtime state")
-                
-                get_runtime_state().set_input_parameters(
-                    height,
-                    width,
-                    batch_size=1,
-                    num_inference_steps=input_config.num_inference_steps,
-                    max_condition_sequence_length=512,
-                    split_text_embed_in_sp=get_pipeline_parallel_world_size() == 1,
-                )
-                logger.info("Set input parameters")
-                
-                parallelize_transformer(pipe)
-                logger.info("Parallelized transformer")
-            except Exception as e:
-                logger.error(f"Error during parallelization setup: {e}")
-                return []
-
-            logger.info("Processing virtual try-on...")
-            try:
-                # Synchronize all processes before processing
-                torch.distributed.barrier()
-                
-                output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
-                    garment,
-                    model_img,
-                    mask, 
-                    output,
-                    local_rank,
-                    size=size,
-                )
-                logger.info(f"Successfully processed virtual try-on in {elapsed_time:.2f} seconds")
-            except Exception as e:
-                logger.error(f"Error during virtual try-on processing: {e}")
-                return []
-            
-            # Only log metrics from the last process
-            if get_world_group().rank == get_world_group().world_size - 1:
-                logger.info(
-                    f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
-                )
-
-            try:
-                # Clean up distributed environment
-                get_runtime_state().destory_distributed_env()
-                logger.info("Cleaned up distributed environment")
-                
-                if torch.distributed.is_initialized():
-                    torch.distributed.barrier()  # Synchronize before destroying
-                    torch.distributed.destroy_process_group()
-                    logger.info("Destroyed distributed process group")
-            except Exception as e:
-                logger.error(f"Error cleaning up distributed environment: {e}")
-
-            return output_paths
-
-        except Exception as e:
-            logger.error(f"Fatal error in predict function: {e}")
-            return []
-
-    
+ 
 ##################################################################################
 
 def fit_in_box(img, target_width, target_height, fill_color=(255, 255, 255)):
@@ -597,3 +465,142 @@ def make_scheduler(name, config):
     except Exception as e:
         logger.error(f"Error creating scheduler: {e}")
         raise
+
+##################################################################################
+
+@torch.inference_mode()
+def main():
+    '''
+    Run a single prediction on the model using torchrun for distributed execution
+    '''
+    parser = argparse.ArgumentParser(description='Run prediction with FLUX Fill model')
+    parser.add_argument('--prompt', type=str, required=True, help='Text prompt for generation')
+    parser.add_argument('--garment', type=str, required=True, help='Path to garment image')
+    parser.add_argument('--mask', type=str, required=True, help='Path to mask image')
+    parser.add_argument('--model_img', type=str, required=True, help='Path to model image')
+    parser.add_argument('--output', type=str, required=True, help='Path to save output')
+    parser.add_argument('--width', type=int, default=1224, help='Output width')
+    parser.add_argument('--height', type=int, default=1632, help='Output height')
+    parser.add_argument('--prompt_strength', type=float, default=0.8, help='Prompt strength')
+    parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
+    parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
+    parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
+    parser.add_argument('--scheduler', type=str, default='K-LMS', help='Scheduler type')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--pipe', type=str, required=True, help='Path to pipeline')
+
+    args = parser.parse_args()
+    local_rank = int(os.environ.get('LOCAL_RANK', 0))
+    
+    logger.info("Starting prediction with parameters:")
+    logger.info(f"Width: {args.width}, Height: {args.height}")
+    logger.info(f"Steps: {args.num_inference_steps}, Guidance Scale: {args.guidance_scale}")
+    logger.info(f"Scheduler: {args.scheduler}, Seed: {args.seed}")
+    logger.info(f"Local rank: {local_rank}")
+
+    extra_kwargs = {}
+    size = (args.width, args.height)
+    pipe = args.pipe
+
+    try:
+        pipe.scheduler = make_scheduler(args.scheduler, pipe.scheduler.config)
+        logger.info(f"Successfully set scheduler to {args.scheduler}")
+    except Exception as e:
+        logger.error(f"Error setting scheduler: {e}")
+        return []
+
+    try:
+        # Create configurations directly without command line arguments
+        engine_args = xFuserArgs(model = "black-forest-labs/FLUX.1-Fill-dev")
+        engine_config, input_config = engine_args.create_config()
+        logger.info("Created engine and input configs")
+        
+        engine_config.runtime_config.dtype = torch.bfloat16
+        
+        input_config.prompt = args.prompt
+        input_config.guidance_scale = args.guidance_scale
+        input_config.num_inference_steps = args.num_inference_steps
+        input_config.seed = args.seed
+        engine_args.ulysses_degree = 2
+        engine_args.ring_degree = 1
+        logger.info("Set input config parameters")
+
+        parallel_info = (
+            f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
+            f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
+            f"tp{engine_args.tensor_parallel_degree}_"
+            f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
+        )
+
+        logger.info(f"Parallel Info: {parallel_info}")
+
+        parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
+        logger.info(f"Peak memory usage: {parameter_peak_memory/1e9:.2f} GB")
+
+        # Use default prompt if None was provided
+        if args.prompt is None:
+            logger.info("Using default prompt")
+            args.prompt = """Two-panel image showing a garment on the left and a model wearing the same garment on the right.
+[IMAGE1] White Adidas t-shirt with black trefoil logo and text.
+[IMAGE2] Model wearing a White Adidas t-shirt with black trefoil logo and text."""
+
+        # Initialize runtime state and parallelize transformer
+        try:
+            initialize_runtime_state(pipe, engine_config)
+            logger.info("Initialized runtime state")
+            
+            get_runtime_state().set_input_parameters(
+                args.height,
+                args.width,
+                batch_size=1,
+                num_inference_steps=input_config.num_inference_steps,
+                max_condition_sequence_length=512,
+                split_text_embed_in_sp=get_pipeline_parallel_world_size() == 1,
+            )
+            logger.info("Set input parameters")
+            
+            parallelize_transformer(pipe)
+            logger.info("Parallelized transformer")
+        except Exception as e:
+            logger.error(f"Error during parallelization setup: {e}")
+            return []
+
+        logger.info("Processing virtual try-on...")
+        try:
+            # Synchronize all processes before processing
+            torch.distributed.barrier()
+            
+            output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
+                args.garment,
+                args.model_img,
+                args.mask, 
+                args.output,
+                local_rank,
+                size=size,
+            )
+            logger.info(f"Successfully processed virtual try-on in {elapsed_time:.2f} seconds")
+            
+            logger.info(
+                f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
+            )
+
+            # Clean up distributed environment
+            get_runtime_state().destory_distributed_env()
+            logger.info("Cleaned up runtime state")
+            
+            torch.distributed.barrier()  # Final sync before cleanup
+            torch.distributed.destroy_process_group()
+            logger.info("Destroyed process group")
+
+            return output_paths
+
+        except Exception as e:
+            logger.error(f"Error during virtual try-on processing: {e}")
+            return []
+
+    except Exception as e:
+        logger.error(f"Fatal error in predict function: {e}")
+        return []
+
+if __name__ == "__main__":
+    main()
