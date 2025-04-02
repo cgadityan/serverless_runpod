@@ -72,43 +72,41 @@ logger.addHandler(handler)
 MODEL_CACHE = "hf-cache"
 
 
-class Predictor:
-    '''Predictor class for StableDiffusion-v1'''
+# class Predictor:
+#     '''Predictor class for StableDiffusion-v1'''
 
-    def __init__(self, model_tag="runwayml/stable-diffusion-v1-5"):
-        '''
-        Initialize the Predictor class
-        '''
-        self.model_tag = model_tag
-        logger.info(f"Initialized Predictor with model tag: {model_tag}")
+#     def __init__(self, model_tag="runwayml/stable-diffusion-v1-5"):
+#         '''
+#         Initialize the Predictor class
+#         '''
+#         self.model_tag = model_tag
+#         logger.info(f"Initialized Predictor with model tag: {model_tag}")
 
-    def setup(self):
-        '''
-        Load the model into memory to make running multiple predictions efficient
-        '''
-        logger.info("Loading pipeline...")
+#     def setup(self):
+#         '''
+#         Load the model into memory to make running multiple predictions efficient
+#         '''
+#         logger.info("Loading pipeline...")
 
-        logger.info("Loading FLUX Fill model...")
-        # Initialize the pipeline with the correct model
-        self.transformer = FluxTransformer2DModel.from_pretrained(
-            "black-forest-labs/FLUX.1-Fill-dev", 
-            torch_dtype=torch.bfloat16,
-            subfolder="transformer",
-            cache_dir= MODEL_CACHE
-        )
-        logger.info("Transformer model loaded successfully")
+#         logger.info("Loading FLUX Fill model...")
+#         # Initialize the pipeline with the correct model
+#         self.transformer = FluxTransformer2DModel.from_pretrained(
+#             "black-forest-labs/FLUX.1-Fill-dev", 
+#             torch_dtype=torch.bfloat16,
+#             subfolder="transformer",
+#             cache_dir= MODEL_CACHE
+#         )
+#         logger.info("Transformer model loaded successfully")
 
-        self.pipe = FluxFillPipeline.from_pretrained(
-            # pretrained_model_name_or_path=engine_config.model_config.model,
-            "black-forest-labs/FLUX.1-Fill-dev",
-            transformer=self.transformer,
-            torch_dtype=torch.bfloat16,
-            cache_dir=MODEL_CACHE
-        ).to("cuda")
-        logger.info("Pipeline loaded and moved to CUDA")
+#         self.pipe = FluxFillPipeline.from_pretrained(
+#             # pretrained_model_name_or_path=engine_config.model_config.model,
+#             "black-forest-labs/FLUX.1-Fill-dev",
+#             transformer=self.transformer,
+#             torch_dtype=torch.bfloat16,
+#             cache_dir=MODEL_CACHE
+#         ).to("cuda")
+#         logger.info("Pipeline loaded and moved to CUDA")
 
-        pipe = self.pipe
-        return pipe
 
         # self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(
         #     self.model_tag,
@@ -470,6 +468,27 @@ def make_scheduler(name, config):
 
 @torch.inference_mode()
 def main():
+
+    logger.info("Loading pipeline...")
+
+    logger.info("Loading FLUX Fill model...")
+    # Initialize the pipeline with the correct model
+    transformer = FluxTransformer2DModel.from_pretrained(
+        "black-forest-labs/FLUX.1-Fill-dev", 
+        torch_dtype=torch.bfloat16,
+        subfolder="transformer",
+        cache_dir= MODEL_CACHE
+    )
+    logger.info("Transformer model loaded successfully")
+
+    pipe = FluxFillPipeline.from_pretrained(
+        # pretrained_model_name_or_path=engine_config.model_config.model,
+        "black-forest-labs/FLUX.1-Fill-dev",
+        transformer=transformer,
+        torch_dtype=torch.bfloat16,
+        cache_dir=MODEL_CACHE
+    ).to("cuda")
+    logger.info("Pipeline loaded and moved to CUDA")
     '''
     Run a single prediction on the model using torchrun for distributed execution
     '''
@@ -487,7 +506,6 @@ def main():
     parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
     parser.add_argument('--scheduler', type=str, default='K-LMS', help='Scheduler type')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
-    parser.add_argument('--pipe', type=str, required=True, help='Path to pipeline')
 
     args = parser.parse_args()
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
@@ -500,7 +518,6 @@ def main():
 
     extra_kwargs = {}
     size = (args.width, args.height)
-    pipe = args.pipe
 
     try:
         pipe.scheduler = make_scheduler(args.scheduler, pipe.scheduler.config)

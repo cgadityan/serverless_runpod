@@ -85,6 +85,8 @@ def run(job):
             validated_input['seed'] = int.from_bytes(os.urandom(2), "big")
             logger.info(f"Generated random seed: {validated_input['seed']}")
 
+        print(MODEL.pipe)
+
         logger.info("Starting model prediction with distributed processing")
         cmd = [
             "torchrun",
@@ -103,11 +105,12 @@ def run(job):
             f"--guidance_scale={validated_input['guidance_scale']}",
             f"--scheduler={validated_input.get('scheduler', 'K-LMS')}",
             f"--seed={validated_input['seed']}",
-            f"--pipe={MODEL.pipe}"
         ]
         
         try:
             process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Process stdout: {process.stdout}")
+            logger.info(f"Process stderr: {process.stderr}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Prediction process failed: {e.stderr}")
             raise RuntimeError(f"Prediction process failed: {e.stderr}")
@@ -171,9 +174,9 @@ if __name__ == "__main__":
         args = parser.parse_args()
         logger.info(f"Initializing with model tag: {args.model_tag}")
 
-        MODEL = predict.Predictor(model_tag=args.model_tag)
-        logger.info("Setting up model")
-        pipe = MODEL.setup()
+        # MODEL = predict.Predictor(model_tag=args.model_tag)
+        # logger.info("Setting up model")
+        # MODEL.setup()
 
         logger.info("Starting runpod server")
         runpod.serverless.start({"handler": run})
