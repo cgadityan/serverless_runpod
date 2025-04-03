@@ -124,7 +124,7 @@ class JobHandler:
 
             # Update validated input with LOCAL PATHS
             validated['mask'], validated['garment'], validated['model_img'] = downloaded_paths
-            logger.info("Downloaded items paths: ",downloaded_paths)
+            # logger.info("Downloaded items paths: ",downloaded_paths)
 
             # Run prediction
             output_paths = self.run_prediction(validated)
