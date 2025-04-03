@@ -5,6 +5,7 @@ import subprocess
 import runpod
 from runpod.serverless.utils import rp_download, rp_cleanup
 from runpod.serverless.utils.rp_validator import validate
+from runpod.serverless.utils.rp_upload import upload_file_to_bucket
 from rp_schema import INPUT_SCHEMA
 
 # Configure logging
@@ -15,9 +16,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def upload_or_base64_encode(file_name, img_path):
+    """
+    Uploads image to S3 bucket if it is available, otherwise returns base64 encoded image.
+    """
+    logger.info(f"Processing file {file_name}")
+    
+    # Check if file exists
+    if not os.path.exists(img_path):
+        logger.error(f"File not found: {img_path}")
+        raise FileNotFoundError(f"File not found: {img_path}")
+        
+    if os.environ.get('BUCKET_ENDPOINT_URL', False):
+        logger.info("Uploading to S3 bucket")
+        return upload_file_to_bucket(file_name, img_path)
+
+    logger.info("Converting to base64")
+    try:
+        with open(img_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read())
+            return encoded_string.decode("utf-8")
+    except Exception as e:
+        logger.error(f"Error encoding file {img_path}: {str(e)}")
+        raise
+
 class JobHandler:
     def __init__(self):
-        self.timeout = 300  # 5 minutes
+        self.timeout = 150  # 2.5 minutes
 
     def validate_input(self, job_input):
         ''' Validate input against schema '''
@@ -92,18 +117,48 @@ class JobHandler:
             if not validated:
                 return {"error": "Invalid input parameters"}
 
-            # Download assets
-            assets = self.download_assets(job['id'], validated)
-            if not assets:
+            # Download assets and get LOCAL PATHS
+            downloaded_paths = self.download_assets(job['id'], validated)
+            if not downloaded_paths:
                 return {"error": "Failed to download input files"}
 
+            # Update validated input with LOCAL PATHS
+            validated['mask'], validated['garment'], validated['model_img'] = downloaded_paths
+            logger.info("Downloaded items paths: ",downloaded_paths)
+
             # Run prediction
-            output_path = self.run_prediction(validated)
-            if not output_path or not os.path.exists(output_path):
-                return {"error": "Prediction failed"}
+            output_paths = self.run_prediction(validated)
+            # if not output_paths or not os.path.exists(output_paths[]):
+            #     return {"error": "Prediction failed"}
 
             # Return result
-            return {"output": output_path}
+            # return {"output": output_path}
+
+            # Ensure output_paths is a list
+            if isinstance(output_paths, str):
+                output_paths = [output_paths]
+            elif not isinstance(output_paths, list):
+                output_paths = list(output_paths)
+
+            logger.info("Processing output images")
+            job_output = []
+            for index, img_path in enumerate(output_paths):
+                if not os.path.exists(img_path):
+                    logger.error(f"Output image not found: {img_path}")
+                    continue
+                    
+                file_name = f"{job['id']}_{index}.png"
+                logger.info(f"Processing output image {index+1}/{len(output_paths)}")
+                try:
+                    image_return = upload_or_base64_encode(file_name, img_path)
+                    job_output.append({
+                        "image": image_return,
+                        "seed": validated['seed'] + index
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing output image {img_path}: {str(e)}")
+            
+
 
         except Exception as e:
             logger.error(f"Job failed: {str(e)}")
