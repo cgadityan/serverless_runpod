@@ -55,7 +55,7 @@ class JobHandler:
             f"--height={validated_input.get('height', 1632)}",
             f"--num_inference_steps={validated_input.get('num_inference_steps', 50)}",
             f"--guidance_scale={validated_input['guidance_scale']}",
-            f"--scheduler={validated_input.get('scheduler', 'K-LMS')}",
+            f"--scheduler={validated_input.get('scheduler', 'FMEULER-D')}",
             f"--seed={validated_input.get('seed', 42)}",
             f"--prompt={validated_input['prompt']}"
         ]
