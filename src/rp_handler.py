@@ -72,6 +72,8 @@ class JobHandler:
             "--rdzv_backend=c10d",
             "--rdzv_endpoint=localhost:29500",
             "predict.py",
+            "--ulysses_degree=2",
+            "--ring_degree=1",
             f"--garment={validated_input['garment']}",
             f"--mask={validated_input['mask']}",
             f"--model_img={validated_input['model_img']}",

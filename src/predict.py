@@ -13,11 +13,19 @@ import functools
 from xfuser import xFuserArgs
 from xfuser.config import FlexibleArgumentParser
 from xfuser.core.distributed import (
-    get_world_group, initialize_runtime_state,
-    get_runtime_state, get_sequence_parallel_world_size,
-    get_sequence_parallel_rank, get_sp_group,
+    get_world_group,
+    get_data_parallel_world_size,
+    get_data_parallel_rank,
+    get_runtime_state,
     get_classifier_free_guidance_world_size,
-    get_classifier_free_guidance_rank, get_cfg_group
+    get_classifier_free_guidance_rank,
+    get_cfg_group,
+    get_sequence_parallel_world_size,
+    get_sequence_parallel_rank,
+    get_sp_group,
+    is_dp_last_group,
+    initialize_runtime_state,
+    get_pipeline_parallel_world_size,
 )
 from xfuser.model_executor.layers.attention_processor import xFuserFluxAttnProcessor2_0
 
@@ -123,9 +131,9 @@ class ParallelRunner:
                 transformer=self.original_transformer,
                 torch_dtype=torch.bfloat16,
                 cache_dir=MODEL_CACHE
-            ).to(f"cuda:{self.local_rank}")
+            ).to("cuda")
 
-            logger.info(f"Models loaded on rank {self.rank}")
+            logger.info(f"Models loaded")
         except Exception as e:
             logger.error(f"Model loading failed: {str(e)}")
             raise
@@ -133,9 +141,30 @@ class ParallelRunner:
     def configure_parallelization(self, engine_args):
         """Apply xFuser parallelization strategies"""
         try:
-            engine_config, _ = engine_args.create_config()
+            engine_config, input_config = engine_args.create_config()
+            engine_config.runtime_config.dtype = torch.bfloat16
+            local_rank = get_world_group().local_rank
             initialize_runtime_state(self.pipe, engine_config)
-            
+
+            # if args.enable_sequential_cpu_offload:
+            #     pipe.enable_sequential_cpu_offload(gpu_id=local_rank)
+            #     logging.info(f"rank {local_rank} sequential CPU offload enabled")
+            # else:
+            self.pipe = self.pipe.to(f"cuda:{local_rank}")
+
+            parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
+
+            ### Parallelize 
+            initialize_runtime_state(self.pipe, engine_config)
+            get_runtime_state().set_input_parameters(
+                height=input_config.height,
+                width=input_config.width * 2,
+                batch_size=1,
+                num_inference_steps=input_config.num_inference_steps,
+                max_condition_sequence_length=512,
+                split_text_embed_in_sp=get_pipeline_parallel_world_size() == 1,
+            )
+                    
             if engine_args.ulysses_degree > 1:
                 logger.info(f"Applying Ulysses parallelism (degree {engine_args.ulysses_degree})")
                 get_runtime_state().set_parallel_config(
@@ -144,7 +173,7 @@ class ParallelRunner:
                     tensor_parallel_degree=engine_args.tensor_parallel_degree
                 )
 
-            self.parallelize_transformer()
+            self.parallelize_transformer(self.pipe)
             logger.info(f"Parallelization configured on rank {self.rank}")
         except Exception as e:
             logger.error(f"Parallelization failed: {str(e)}")
@@ -193,12 +222,12 @@ class ParallelRunner:
                 generator=torch.Generator(device=f"cuda:{self.local_rank}").manual_seed(args.seed)
             )
 
-            return self.save_output(output, args.output)
+            return self.save_output(output, args.output, args)
         except Exception as e:
             logger.error(f"Inference failed: {str(e)}")
             raise
 
-    def save_output(self, output, path):
+    def save_output(self, output, path, args):
         """Process and save output"""
         try:
             result = output.images[0].crop((args.width, 0, args.width * 2, args.height))
@@ -238,7 +267,8 @@ class ParallelRunner:
 def main():
     runner = ParallelRunner()
     runner.setup_distributed()
-
+    
+    logger.info("Getting arguments ...")
     # Argument parsing
     parser = FlexibleArgumentParser(description="xFuser Parallel Inference")
     xFuserArgs.add_cli_args(parser)
