@@ -55,14 +55,20 @@ class Predictor:
     def __init__(self, model_tag="black-forest-labs/FLUX.1-Fill-dev"):
         self.model_tag = model_tag
         self.rank = int(os.environ.get('RANK', 0))
+        logger.info(f"[Rank {self.rank}] Initializing predictor")
         self.local_rank = int(os.environ.get('LOCAL_RANK', 0))
         self.world_size = int(os.environ.get('WORLD_SIZE', 1))
         self.pipe = None
         self.initialized = False
+        self.original_transformer = None
 
         # Configure logger with rank information
         self.logger = logging.LoggerAdapter(logger, {'rank': self.rank})
         self.logger.info(f"Initializing Predictor on rank {self.rank}")
+
+    def get_config(self):
+        """Safe config access"""
+        return self.original_transformer.config
 
     def setup(self):
         '''One-time setup per process'''
@@ -74,7 +80,7 @@ class Predictor:
 
         try:
             # Load transformer model
-            transformer = FluxTransformer2DModel.from_pretrained(
+            self.original_transformer = FluxTransformer2DModel.from_pretrained(
                 self.model_tag,
                 torch_dtype=torch.bfloat16,
                 subfolder="transformer",
@@ -84,7 +90,7 @@ class Predictor:
             # Initialize pipeline
             self.pipe = FluxFillPipeline.from_pretrained(
                 self.model_tag,
-                transformer=transformer,
+                transformer=self.original_transformer,
                 torch_dtype=torch.bfloat16,
                 cache_dir=MODEL_CACHE
             ).to(f"cuda:{self.local_rank}")
@@ -97,6 +103,8 @@ class Predictor:
                     device_ids=[self.local_rank],
                     output_device=self.local_rank
                 )
+            else:
+                self.pipe.transformer = self.original_transformer
 
             self.initialized = True
             self.logger.info(f"Setup complete on rank {self.rank}")
@@ -231,6 +239,11 @@ def main():
         # Initialize predictor
         predictor = Predictor()
         predictor.setup()
+
+        # Access config safely
+        config = predictor.get_config()
+        logger.info(f"[Rank {predictor.rank}] Model config: {config}")
+        
         
         # Run prediction
         result = predictor.predict(args)
@@ -242,6 +255,8 @@ def main():
     except Exception as e:
         logger.error(f"Main process failed: {str(e)}")
         sys.exit(1)
+    finally:
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()
