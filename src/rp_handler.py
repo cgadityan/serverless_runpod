@@ -120,11 +120,13 @@ def run(job):
             logger.error(f"Prediction process failed: {e.stderr}")
             raise RuntimeError(f"Prediction process failed: {e.stderr}")
             
-        # Parse output paths from stdout
-        img_paths = process.stdout.strip().split('\n')
-        if not img_paths or img_paths[0] == '':
-            logger.error("No output paths received from prediction")
-            raise RuntimeError("No output paths received from prediction")
+        img_paths = validated_input['output']
+
+        # # Parse output paths from stdout
+        # img_paths = process.stdout.strip().split('\n')
+        # if not img_paths or img_paths[0] == '':
+        #     logger.error("No output paths received from prediction")
+        #     raise RuntimeError("No output paths received from prediction")
 
         logger.info(f"Image paths: {img_paths}")
 

@@ -322,6 +322,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         )
 
         logger.info(f"Parallel configuration: {parallel_info}")
+        logger.info()
 
         if engine_config.runtime_config.use_torch_compile:
             logger.info("Using torch compile")
@@ -477,7 +478,7 @@ def main():
     logger.info("Loading pipeline...")
 
     logger.info("Loading FLUX Fill model...")
-    os.environ["NCCL_DEBUG"] = "INFO"
+    # os.environ["NCCL_DEBUG"] = "INFO"
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     torch.cuda.set_device(local_rank)  # Add explicit device assignment
     logger.info(f"Local rank: {local_rank}, Using CUDA device: {torch.cuda.current_device()}")
