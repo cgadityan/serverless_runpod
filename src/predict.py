@@ -586,7 +586,7 @@ def main():
         logger.info("Processing virtual try-on...")
         try:
             # Synchronize all processes before processing
-            torch.distributed.barrier()
+            # torch.distributed.barrier()
             
             output_paths, peak_memory, elapsed_time = process_virtual_try_on(pipe, engine_args, engine_config, input_config,
                 args.garment,
@@ -599,16 +599,17 @@ def main():
             )
             logger.info(f"Successfully processed virtual try-on in {elapsed_time:.2f} seconds")
             
-            logger.info(
-                f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
-            )
+            if get_world_group().rank == get_world_group().world_size - 1:
+                print(
+                    f"epoch time: {elapsed_time:.2f} sec, parameter memory: {parameter_peak_memory/1e9:.2f} GB, memory: {peak_memory/1e9:.2f} GB"
+                )
 
             # Clean up distributed environment
             get_runtime_state().destory_distributed_env()
             logger.info("Cleaned up runtime state")
             
-            torch.distributed.barrier()  # Final sync before cleanup
-            torch.distributed.destroy_process_group()
+            # torch.distributed.barrier()  # Final sync before cleanup
+            # torch.distributed.destroy_process_group()
             logger.info("Destroyed process group")
 
             return output_paths
