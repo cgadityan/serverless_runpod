@@ -322,6 +322,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
         if engine_config.runtime_config.use_torch_compile:
             logger.info("Using torch compile")
             torch._inductor.config.reorder_for_compute_comm_overlap = True
+            torch._inductor.config.inplace_outputs = False 
             pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune-no-cudagraphs")
     
             # one step to warmup the torch compiler
@@ -356,7 +357,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             generator=torch.Generator(device="cuda").manual_seed(input_config.seed)
         )
 
-        result = output.images[0]
+        result = output.images[0].clone()
         
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -466,7 +467,7 @@ def make_scheduler(name, config):
 
 ##################################################################################
 
-@torch.inference_mode()
+# @torch.inference_mode()
 def main():
 
     logger.info("Loading pipeline...")
