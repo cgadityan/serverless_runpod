@@ -293,6 +293,10 @@ def parallelize_transformer(pipe: FluxFillPipeline):
 def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768), guidance_scale=30):
     """Process virtual try-on using FLUX Fill model"""
     logger.info("Starting virtual try-on processing")
+    logger.info(f"GPU Status - Rank {local_rank}: "
+            f"Visible Devices: {os.environ.get('CUDA_VISIBLE_DEVICES','')}, "
+            f"Current Device: {torch.cuda.current_device()}")
+
     try:
         # Ensure size is a valid tuple
         if isinstance(size, (int, float)):
@@ -473,6 +477,10 @@ def main():
     logger.info("Loading pipeline...")
 
     logger.info("Loading FLUX Fill model...")
+    os.environ["NCCL_DEBUG"] = "INFO"
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    torch.cuda.set_device(local_rank)  # Add explicit device assignment
+    logger.info(f"Local rank: {local_rank}, Using CUDA device: {torch.cuda.current_device()}")
     # Initialize the pipeline with the correct model
     transformer = FluxTransformer2DModel.from_pretrained(
         "black-forest-labs/FLUX.1-Fill-dev", 
@@ -488,7 +496,7 @@ def main():
         transformer=transformer,
         torch_dtype=torch.bfloat16,
         cache_dir=MODEL_CACHE
-    ).to("cuda")
+    ).to(f"cuda:{local_rank}")
     logger.info("Pipeline loaded and moved to CUDA")
     '''
     Run a single prediction on the model using torchrun for distributed execution
@@ -523,7 +531,6 @@ def main():
     logger.info(f"Scheduler: {args.scheduler}, Seed: {args.seed}")
     logger.info(f"Local rank: {local_rank}")
 
-    extra_kwargs = {}
     size = (args.width, args.height)
 
     try:
@@ -552,6 +559,12 @@ def main():
         )
 
         logger.info(f"Parallel Info: {parallel_info}")
+
+        if args.enable_sequential_cpu_offload:
+            pipe.enable_sequential_cpu_offload(gpu_id=local_rank)
+            logging.info(f"rank {local_rank} sequential CPU offload enabled")
+        else:
+            pipe = pipe.to(f"cuda:{local_rank}")
 
         parameter_peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
         logger.info(f"Peak memory usage: {parameter_peak_memory/1e9:.2f} GB")
