@@ -361,7 +361,7 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
             generator=torch.Generator(device="cuda").manual_seed(input_config.seed)
         )
 
-        result = output.images[0].clone()
+        result = output.images[0]
         
         end_time = time.time()
         elapsed_time = end_time - start_time
