@@ -519,7 +519,7 @@ def main():
     parser.add_argument('--num_outputs', type=int, default=1, help='Number of outputs to generate')
     # parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
     parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
-    parser.add_argument('--scheduler', type=str, default='K-LMS', help='Scheduler type')
+    parser.add_argument('--scheduler', type=str, default='FMEULER-D', help='Scheduler type')
     # parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
     args = parser.parse_args()
@@ -533,12 +533,12 @@ def main():
 
     size = (args.width, args.height)
 
-    try:
-        pipe.scheduler = make_scheduler(args.scheduler, pipe.scheduler.config)
-        logger.info(f"Successfully set scheduler to {args.scheduler}")
-    except Exception as e:
-        logger.error(f"Error setting scheduler: {e}")
-        return []
+    # try:
+    #     pipe.scheduler = make_scheduler(args.scheduler, pipe.scheduler.config)
+    #     logger.info(f"Successfully set scheduler to {args.scheduler}")
+    # except Exception as e:
+    #     logger.error(f"Error setting scheduler: {e}")
+    #     return []
 
     try:
         # Create configurations directly without command line arguments
@@ -550,15 +550,7 @@ def main():
         engine_config.runtime_config.dtype = torch.bfloat16
         local_rank = get_world_group().local_rank
         logger.info("Set input config parameters")
-
-        parallel_info = (
-            f"dp{engine_args.data_parallel_degree}_cfg{engine_config.parallel_config.cfg_degree}_"
-            f"ulysses{engine_args.ulysses_degree}_ring{engine_args.ring_degree}_"
-            f"tp{engine_args.tensor_parallel_degree}_"
-            f"pp{engine_args.pipefusion_parallel_degree}_patch{engine_args.num_pipeline_patch}"
-        )
-
-        logger.info(f"Parallel Info: {parallel_info}")
+        
 
         if args.enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload(gpu_id=local_rank)

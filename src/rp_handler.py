@@ -108,7 +108,7 @@ def run(job):
             f"--num_outputs={validated_input.get('num_outputs', 1)}",
             f"--num_inference_steps={validated_input.get('num_inference_steps', 50)}",
             f"--guidance_scale={validated_input['guidance_scale']}",
-            f"--scheduler={validated_input.get('scheduler', 'K-LMS')}",
+            f"--scheduler={validated_input.get('scheduler', 'FMEULER-D')}",
             f"--seed={validated_input['seed']}",
         ]
         
