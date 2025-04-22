@@ -85,9 +85,9 @@ def run(job):
             logger.error(f"Error downloading input files: {str(e)}")
             return {"error": f"Failed to download input files: {str(e)}"}
 
-        if validated_input['seed'] is None:
-            validated_input['seed'] = [int.from_bytes(os.urandom(2), 'big') for _ in range(2)]
-            logger.info(f"Generated random seed: {validated_input['seed']}")
+        if validated_input['seeds'] is None:
+            validated_input['seeds'] = [int.from_bytes(os.urandom(2), 'big') for _ in range(2)]
+            logger.info(f"Generated random seed: {validated_input['seeds']}")
 
 
         logger.info("Starting model prediction with distributed processing")
@@ -110,7 +110,7 @@ def run(job):
             f"--num_inference_steps={validated_input.get('num_inference_steps', 50)}",
             f"--guidance_scale={validated_input['guidance_scale']}",
             f"--scheduler={validated_input.get('scheduler', 'FMEULER-D')}",
-            f"--seeds={validated_input['seed'][0]},{validated_input['seed'][1]}",
+            f"--seeds={validated_input['seeds'][0]},{validated_input['seeds'][1]}",
         ]
         
         try:
@@ -130,7 +130,7 @@ def run(job):
         #     raise RuntimeError("No output paths received from prediction")
 
         img_paths = []
-        for i in range(len(validated_input['seed'])):
+        for i in range(len(validated_input['seeds'])):
             output_name = f"{os.path.splitext(validated_input['output'])}_result_{i}.png"
             img_paths.append(output_name)
 
@@ -155,7 +155,7 @@ def run(job):
                 image_encoded = upload_or_base64_encode(file_name, img_path)
                 job_output.append({
                     "image": image_encoded,
-                    "seed": validated_input['seed'][index] # + index
+                    "seed": validated_input['seeds'][index] # + index
                 })
             except Exception as e:
                 logger.error(f"Error processing output image {img_path}: {str(e)}")
