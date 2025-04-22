@@ -65,10 +65,10 @@ INPUT_SCHEMA = {
         'default': 'FMEULER-D',
         # 'constraints': lambda scheduler: scheduler in ['FMEULER-D','DDIM', 'DDPM', 'DPM-M', 'DPM-S',  'EULER-A', 'EULER-D', 'HEUN', 'IPNDM', 'KDPM2-A', 'KDPM2-D', 'PNDM', 'K-LMS', 'KLMS']
     },
-    'seed': {
-        'type': int,
+    'seeds': {
+        'type': list,
         'required': False,
-        'default': 22
+        'default': [22,41]
     },
     # 'nsfw': {
     #     'type': bool,

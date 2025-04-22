@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 <div align="center">
 
 <h1>Flux Fill Dev 1 model | Worker</h1>
@@ -24,6 +23,5 @@ docker build --build-arg MODEL_URL=https://huggingface.co/black-forest-labs/FLUX
 
 This worker follows a modified version of the [worker template](https://github.com/runpod-workers/worker-template) where the Docker build workflow contains additional models to be built and pushed.
 
-=======
 # serverless_runpod
 >>>>>>> 5204476ce71e8f31439f4d7f1fa8de65b860bc3d

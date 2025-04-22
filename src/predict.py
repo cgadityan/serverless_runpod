@@ -290,7 +290,7 @@ def parallelize_transformer(pipe: FluxFillPipeline):
 
 ##################################################################################
 
-def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, size=(576, 768), guidance_scale=30):
+def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garment_path, model_path, mask_path, output_path, local_rank, seeds=(22,41), size=(576, 768), guidance_scale=30):
     """Process virtual try-on using FLUX Fill model"""
     logger.info("Starting virtual try-on processing")
     logger.info(f"GPU Status - Rank {local_rank}: "
@@ -341,89 +341,100 @@ def process_virtual_try_on(pipe, engine_args, engine_config, input_config, garme
                 guidance_scale= guidance_scale,
                 prompt= input_config.prompt,
                 output_type= input_config.output_type,
-                generator=torch.Generator(device="cuda").manual_seed(input_config.seed),
+                generator=torch.Generator(device="cuda").manual_seed(seeds[0]),
             ).images
     
         torch.cuda.reset_peak_memory_stats()
         start_time = time.time()
         
         logger.info("Running inference")
-        output = pipe(
-            height=size[1],
-            width=size[0] * 2,  # Double width for side-by-side images
-            image=combined_image,
-            mask_image=mask_image,
-            num_inference_steps=input_config.num_inference_steps,
-            max_sequence_length=512,
-            guidance_scale=guidance_scale,
-            prompt= input_config.prompt,
-            output_type=input_config.output_type,
-            generator=torch.Generator(device="cuda").manual_seed(input_config.seed)
-        )
 
-        result = output.images[0]
+
+        output = []
+        result = []
+        tryon_result = []
+        for i in range(len(seeds)):
+            output.append(pipe(
+                height=size[1],
+                width=size[0] * 2,  # Double width for side-by-side images
+                image=combined_image,
+                mask_image=mask_image,
+                num_inference_steps=input_config.num_inference_steps,
+                max_sequence_length=512,
+                guidance_scale=30,
+                prompt=input_config.prompt,
+                output_type=input_config.output_type,
+                generator=torch.Generator(device="cuda").manual_seed(seeds[i])
+            ))
+        
+            result.append(output[i].images[0])
         
         end_time = time.time()
         elapsed_time = end_time - start_time
         peak_memory = torch.cuda.max_memory_allocated(device=f"cuda:{local_rank}")
-        logger.info(f"Inference completed in {elapsed_time:.2f} seconds")
-        logger.info(f"Peak memory usage: {peak_memory/1e9:.2f} GB")
-        
+
+         
         # Extract the right half (try-on result)
         width = size[0]
-        tryon_result = result.crop((width, 0, width * 2, size[1]))
+        for res in result:
+            tryon_result.append(res.crop((width, 0, width * 2, size[1])))
         
-        # Save the try-on result
-        tryon_result = tryon_result.convert('RGB')  # Convert to RGB to ensure compatibility
-        tryon_result.save(output_path, format='PNG')
-        logger.info(f"Saved try-on result to {output_path}")
+        output_paths = []
+        # Save the try-on results
+        for i, tryon in enumerate(tryon_result):
+            tryon = tryon.convert('RGB')  # Convert to RGB to ensure compatibility
+            output_name = f"{os.path.splitext(output_path)[0]}_result_{i}.png"
+            output_paths.append(output_name)
+            tryon.save(output_name, format='PNG')
         
-        # Create a comparison panel (optional)
-        logger.info("Creating comparison panel")
-        garment_img = Image.open(garment_path).convert("RGB")
-        model_img = Image.open(model_path).convert("RGB")
-        mask_img = Image.open(mask_path).convert("L")
+        # # Create a comparison panel (optional)
+        # garment_img = Image.open(garment_path).convert("RGB")
+        # model_img = Image.open(model_path).convert("RGB")
+        # mask_img = Image.open(mask_path).convert("L")
         
-        # Create blacked-out model
-        model_array = np.array(model_img)
-        mask_array = np.array(mask_img)
-        mask_3d = np.repeat(mask_array[:, :, np.newaxis], 3, axis=2)
-        model_array[mask_3d > 0] = 0
-        model_with_mask = Image.fromarray(model_array)
+        # # Create blacked-out model
+        # model_array = np.array(model_img)
+        # mask_array = np.array(mask_img)
+        # mask_3d = np.repeat(mask_array[:, :, np.newaxis], 3, axis=2)
+        # model_array[mask_3d > 0] = 0
+        # model_with_mask = Image.fromarray(model_array)
         
-        # Fit images to panel size
-        garment_fitted = fit_in_box(garment_img, size[0], size[1])
-        model_fitted = fit_in_box(model_with_mask, size[0], size[1])
-        result_fitted = fit_in_box(tryon_result, size[0], size[1])
+        # # Fit images to panel size
+        # garment_fitted = fit_in_box(garment_img, size[0], size[1])
+        # model_fitted = fit_in_box(model_with_mask, size[0], size[1])
         
-        # Create panel
-        panel_width = size[0] * 3  # garment + model + result
-        panel_height = size[1]
-        panel = Image.new("RGB", (panel_width, panel_height), (255, 255, 255))
-        
-        # Paste images
-        panel.paste(garment_fitted, (0, 0))
-        panel.paste(model_fitted, (size[0], 0))
-        panel.paste(result_fitted, (size[0] * 2, 0))
+        # # Create and save panels for both results
+        # for i, tryon in enumerate(tryon_result):
+        #     result_fitted = fit_in_box(tryon, size[0], size[1])
+            
+        #     # Create panel
+        #     panel_width = size[0] * 3  # garment + model + result
+        #     panel_height = size[1]
+        #     panel = Image.new("RGB", (panel_width, panel_height), (255, 255, 255))
+            
+        #     # Paste images
+        #     panel.paste(garment_fitted, (0, 0))
+        #     panel.paste(model_fitted, (size[0], 0))
+        #     panel.paste(result_fitted, (size[0] * 2, 0))
+            
+        #     # Save panel
+        #     panel_path = f"{os.path.splitext(output_path)[0]}_panel_{i}.png"
+        #     panel.save(panel_path, format='PNG')
 
         if input_config.output_type == "pil":
             dp_group_index = get_data_parallel_rank()
             num_dp_groups = get_data_parallel_world_size()
             dp_batch_size = (input_config.batch_size + num_dp_groups - 1) // num_dp_groups
             if is_dp_last_group():
-                for i, image in enumerate(output.images):
+                for i, image in enumerate(output[0].images):
                     image_rank = dp_group_index * dp_batch_size + i
                     image_name = f"flux_result_{parallel_info}_{image_rank}_tc_{engine_args.use_torch_compile}.png"
-                    logger.info(f"Saving additional output image: {image_name}")
+                    print(image_name)
         
-        # Save panel
-        panel_path = os.path.splitext(output_path)[0] + "_panel.png"
-        panel.save(panel_path, format='PNG')
-        
-        logger.info(f"Try-on result saved to: {output_path}")
-        logger.info(f"Comparison panel saved to: {panel_path}")
-        
-        return output_path, peak_memory, elapsed_time
+        print(f"Try-on results saved with base name: {os.path.splitext(output_path)[0]}_result_[0-1].png")
+        # print(f"Comparison panels saved with base name: {os.path.splitext(output_path)[0]}_panel_[0-1].png")
+
+        return output_paths, peak_memory, elapsed_time
         
     except Exception as e:
         logger.error(f"Error in virtual try-on processing: {str(e)}")
@@ -520,15 +531,22 @@ def main():
     # parser.add_argument('--num_inference_steps', type=int, default=50, help='Number of inference steps')
     parser.add_argument('--guidance_scale', type=float, default=30.0, help='Guidance scale')
     parser.add_argument('--scheduler', type=str, default='FMEULER-D', help='Scheduler type')
-    # parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--seeds', type=str, default="22,41", help='Random seed')
+
+    try:
+        s1, s2 = map(int, args.seeds.split(','))
+        seeds = (s1, s2)
+    except:
+        print("Invalid seeds format. Using default 42 and 21.")
+        seeds = (42, 21)
 
     args = parser.parse_args()
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
-    
+     
     logger.info("Starting prediction with parameters:")
     logger.info(f"Width: {args.width}, Height: {args.height}")
     logger.info(f"Steps: {args.num_inference_steps}, Guidance Scale: {args.guidance_scale}")
-    logger.info(f"Scheduler: {args.scheduler}, Seed: {args.seed}")
+    logger.info(f"Scheduler: {args.scheduler}, Seed: {seeds[0]}")
     logger.info(f"Local rank: {local_rank}")
 
     size = (args.width, args.height)
@@ -600,6 +618,7 @@ def main():
                 args.mask, 
                 args.output,
                 local_rank,
+                seeds=seeds,
                 size=size,
                 guidance_scale=args.guidance_scale
             )

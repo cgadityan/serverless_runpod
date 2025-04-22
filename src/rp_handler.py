@@ -21,6 +21,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
 def upload_or_base64_encode(file_name, img_path):
     """
     Uploads image to S3 bucket if it is available, otherwise returns base64 encoded image.
@@ -85,7 +86,7 @@ def run(job):
             return {"error": f"Failed to download input files: {str(e)}"}
 
         if validated_input['seed'] is None:
-            validated_input['seed'] = int.from_bytes(os.urandom(2), "big")
+            validated_input['seed'] = [int.from_bytes(os.urandom(2), 'big') for _ in range(2)]
             logger.info(f"Generated random seed: {validated_input['seed']}")
 
 
@@ -109,7 +110,7 @@ def run(job):
             f"--num_inference_steps={validated_input.get('num_inference_steps', 50)}",
             f"--guidance_scale={validated_input['guidance_scale']}",
             f"--scheduler={validated_input.get('scheduler', 'FMEULER-D')}",
-            f"--seed={validated_input['seed']}",
+            f"--seeds={validated_input['seed'][0]},{validated_input['seed'][1]}",
         ]
         
         try:
@@ -120,13 +121,18 @@ def run(job):
             logger.error(f"Prediction process failed: {e.stderr}")
             raise RuntimeError(f"Prediction process failed: {e.stderr}")
             
-        img_paths = validated_input['output']
+        # img_paths = validated_input['output']
 
         # # Parse output paths from stdout
         # img_paths = process.stdout.strip().split('\n')
         # if not img_paths or img_paths[0] == '':
         #     logger.error("No output paths received from prediction")
         #     raise RuntimeError("No output paths received from prediction")
+
+        img_paths = []
+        for i in range(len(validated_input['seed'])):
+            output_name = f"{os.path.splitext(validated_input['output'])}_result_{i}.png"
+            img_paths.append(output_name)
 
         logger.info(f"Image paths: {img_paths}")
 
@@ -146,10 +152,10 @@ def run(job):
             file_name = f"{job['id']}_{index}.png"
             logger.info(f"Processing output image {index+1}/{len(img_paths)}")
             try:
-                image_return = upload_or_base64_encode(file_name, img_path)
+                image_encoded = upload_or_base64_encode(file_name, img_path)
                 job_output.append({
-                    "image": image_return,
-                    "seed": validated_input['seed'] + index
+                    "image": image_encoded,
+                    "seed": validated_input['seed'][index] # + index
                 })
             except Exception as e:
                 logger.error(f"Error processing output image {img_path}: {str(e)}")
