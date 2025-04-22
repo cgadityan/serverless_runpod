@@ -131,7 +131,7 @@ def run(job):
 
         img_paths = []
         for i in range(len(validated_input['seeds'])):
-            output_name = f"{os.path.splitext(validated_input['output'])}_result_{i}.png"
+            output_name = f"{os.path.splitext(validated_input['output'])[0]}_result_{i}.png"
             img_paths.append(output_name)
 
         logger.info(f"Image paths: {img_paths}")
